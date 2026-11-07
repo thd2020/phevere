@@ -76,6 +76,18 @@ function load(name) {
   assert.equal(again.lemma, 'codon');
   assert.equal((await store.listVocab(50)).length, 4);
 
+  // A finished lookup replaces a saved definition, unless the row has senses from a dictionary the
+  // lookup did not have (Webster 1913 installed only on the PC that saved the word).
+  const webster = "Webster's Unabridged 1913 (GCIDE)";
+  await store.addVocab({ lemma: 'decrepit', sourceLang: 'en', definition: 'Weakened.\nBroken down with age.', sources: ['Wiktionary', webster] });
+  const here = { sourceLang: 'en', definition: 'Weakened.\n老态龙钟的', sources: ['Free Dictionary API', 'Wiktionary', 'Chinese Wiktionary'] };
+  assert.equal(await store.refreshFromLookup(['decrepit'], here), null, 'a lookup without Webster leaves its senses');
+  assert.match((await store.findByLemma('decrepit', 'en')).definition, /Broken down with age/);
+  const withPack = await store.refreshFromLookup(['decrepit'], { ...here, definition: 'Weakened.\nFeeble.', sources: ['Wiktionary', webster] });
+  assert.equal(withPack.definition, 'Weakened.\nFeeble.', 'a lookup that has Webster replaces the row');
+  await store.addVocab({ lemma: 'rout', sourceLang: 'en', definition: 'A defeat.', sources: ['Wiktionary', 'Datamuse'] });
+  assert.equal((await store.refreshFromLookup(['rout'], { sourceLang: 'en', definition: 'A disorderly retreat.', sources: ['Wiktionary'] })).definition, 'A disorderly retreat.', 'online sources do not hold a row back');
+
   console.log('vocab-lemma ok');
 })().catch((err) => {
   console.error(err);

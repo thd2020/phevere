@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Saved words keep senses from another computer's dictionaries (2026-11-07): since 4.3.2, a lookup on a computer without an offline dictionary, such as Webster 1913, replaced a saved word's definition and dropped the senses that dictionary had given on the computer that saved it ("decrepit" lost "Broken down with age"). A row with senses from an offline dictionary or a keyed service that the lookup did not have is now left as it is.
+
 ## [4.3.2] - 2026-11-07
 
 ### Added
