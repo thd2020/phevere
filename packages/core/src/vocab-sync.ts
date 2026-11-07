@@ -20,6 +20,8 @@ import type { HttpClient } from './http';
 import { getHttp, getVocabDb, isCoreConfigured } from './runtime';
 import { ensureVocabReady, notifyVocabChanged, registerLemmaMigration, registerSaveHook, rowToEntry, type VocabEntry } from './vocab-store';
 import { plainPluralOf, stripGlossText } from './lookup-policy';
+import { tidySenseText } from './sense-text';
+import { normalizeMeaningForMerge } from './definition-merge';
 import { normalizeVocabLemma, typoDistance } from './vocab-lemma';
 import { formOfGlossLemma, formOfLemmaFromGlosses, isRegularInflection, resolveFormOf, stripCitationLines } from './form-of';
 import { foldLookupKey, latinLemmasByPos } from './text-normalize';
@@ -363,6 +365,46 @@ export async function normalizeStoredLemmas(): Promise<number> {
   }
   if (changed) await mergeDuplicateLemmas(now);
   await db.runWrite(`INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)`, [LEMMA_NORMALIZED_KEY, String(now)]);
+  return changed;
+}
+
+const DEFINITIONS_TIDIED_KEY = 'definitions-tidied-v1';
+
+/**
+ * Saved definitions in the style lookups now give (sense-text.ts): each English sense with a
+ * capital and a stop, no space before punctuation, no Wiktionary stylesheet text an older save
+ * kept, and no line that repeats an earlier one ("moratorium" had its law sense twice). Runs once
+ * per notebook; changed rows get a new updatedAt so other devices take the change.
+ */
+export async function tidyStoredDefinitions(): Promise<number> {
+  await ensureVocabReady();
+  const db = getVocabDb();
+  const done = await db.queryOne(`SELECT value FROM sync_state WHERE key = ?`, [DEFINITIONS_TIDIED_KEY]);
+  if (done) return 0;
+  // English words only: a foreign word's glosses ("dog" for собака) stay lowercase, as bilingual dictionaries print them.
+  const rows = await db.queryAll(
+    `SELECT id, definition FROM vocab WHERE IFNULL(TRIM(definition), '') <> '' AND (IFNULL(source_lang, '') IN ('', 'en', 'auto') OR source_lang LIKE 'en-%')`,
+  );
+  const now = Date.now();
+  let changed = 0;
+  for (const row of rows) {
+    const before = String(row.definition || '');
+    const seen = new Set<string>();
+    const lines: string[] = [];
+    for (const raw of before.split('\n')) {
+      const line = tidySenseText(raw);
+      const key = normalizeMeaningForMerge(line) || line;
+      if (!line || seen.has(key)) continue;
+      seen.add(key);
+      lines.push(line);
+    }
+    const next = lines.join('\n');
+    if (!next || next === before) continue;
+    await db.runWrite(`UPDATE vocab SET definition = ?, updated_at = ? WHERE id = ?`, [next, now, row.id]);
+    changed += 1;
+  }
+  await db.runWrite(`INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)`, [DEFINITIONS_TIDIED_KEY, String(now)]);
+  if (changed) notifyVocabChanged();
   return changed;
 }
 
@@ -762,6 +804,7 @@ registerLemmaMigration(async () => {
   await normalizeStoredLemmas();
   await foldStoredPlurals();
   await foldStoredForms();
+  await tidyStoredDefinitions();
   // The network part runs behind the list, later and slowly; rows it changes repaint through notifyVocabChanged.
   if (isCoreConfigured()) {
     setTimeout(() => {

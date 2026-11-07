@@ -36,6 +36,8 @@ export interface MergeableDefinition {
 export function normalizeMeaningForMerge(raw: string): string {
   let s = (raw || '')
     .normalize('NFC')
+    // Wiktionary's inline <style> text (.mw-parser-output .defdate{…}) kept two copies of a sense apart.
+    .replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&[a-z]+;/gi, ' ')
     .toLowerCase()

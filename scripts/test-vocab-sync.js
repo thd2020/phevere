@@ -188,7 +188,7 @@ async function main() {
   assert.strictEqual((await A.core.findByLemma('pear'))?.note, 'still studying this');
 
   // 5. The same word saved separately on both devices folds into one row.
-  const brookA = await A.core.addVocab({ lemma: 'brook', definition: 'a small stream' });
+  const brookA = await A.core.addVocab({ lemma: 'brook', definition: 'A small stream.' });
   await tick();
   const brookB = await B.core.addVocab({ lemma: 'Brook', note: 'saw it in a poem' });
   await both();
@@ -198,7 +198,7 @@ async function main() {
     const rows = (await d.core.listVocab(1000)).filter((r) => r.lemma.toLowerCase() === 'brook');
     assert.strictEqual(rows.length, 1, `${d.name} keeps one brook`);
     assert.strictEqual(rows[0].id, keepId);
-    assert.strictEqual(rows[0].definition, 'a small stream');
+    assert.strictEqual(rows[0].definition, 'A small stream.');
     assert.strictEqual(rows[0].note, 'saw it in a poem');
   }
 
