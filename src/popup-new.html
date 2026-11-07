@@ -3189,11 +3189,60 @@ function startAutoCloseTimeout() {
           });
         }
 
+        /** The language of the entry shown: the one picked under the headword, else the one detected. */
+        function currentEntryLang() {
+          var langs = (currentResult && currentResult.languages) || [];
+          var cur = langs.find(function (l) { return l && l.current; });
+          return (cur && cur.code) || (currentResult && currentResult.detectedLanguage) || 'en';
+        }
+
+        /** The bundled neural voice reads English and Chinese; eSpeak reads the rest mechanically. */
+        function hasNeuralVoice(lang) {
+          var base = String(lang || 'en').toLowerCase().split(/[-_]/)[0];
+          return base === 'en' || base === 'zh' || base === 'cmn';
+        }
+
+        /**
+         * A word in a language the neural voice does not read (tschüss, merci): an installed system
+         * voice for the language, else Google Translate's voice, as the Translation tab speaks.
+         * Resolves false when neither can start, and eSpeak speaks instead.
+         */
+        async function speakInLanguage(word, lang) {
+          var base = String(lang || '').toLowerCase().split(/[-_]/)[0];
+          try {
+            var voices = speechSynthesis.getVoices();
+            if (!voices.length) {
+              await new Promise(function (resolve) {
+                speechSynthesis.addEventListener('voiceschanged', resolve, { once: true });
+                setTimeout(resolve, 600);
+              });
+              voices = speechSynthesis.getVoices();
+            }
+            var voice = voices.find(function (v) { return String(v.lang).toLowerCase().split(/[-_]/)[0] === base; });
+            if (voice) {
+              var u = new SpeechSynthesisUtterance(word);
+              u.voice = voice;
+              u.lang = voice.lang;
+              u.rate = Math.max(0.5, Math.min(2, Number(audioPrefs.speed) || 1));
+              u.volume = Math.max(0, Math.min(1, Number(audioPrefs.volume == null ? 1 : audioPrefs.volume)));
+              speechSynthesis.cancel();
+              speechSynthesis.speak(u);
+              return true;
+            }
+          } catch (e) {}
+          if (typeof playOnlineVoice === 'function' && navigator.onLine !== false) {
+            playOnlineVoice(word, base);
+            return true;
+          }
+          return false;
+        }
+
         /** No recorded clip plays: say the headword with the chosen voice, as the phone does. */
         async function speakHeadwordFallback() {
           var word = String((currentResult && currentResult.word) || currentText || '').trim();
           if (!word) return;
-          var lang = (currentResult && currentResult.detectedLanguage) || 'en';
+          var lang = currentEntryLang();
+          if (!hasNeuralVoice(lang) && (await speakInLanguage(word, lang))) return;
           var ok = await speakSynthetic({ text: word, lang: lang });
           if (!ok) showToast(T('popup.audio.failed'));
         }
@@ -3306,6 +3355,12 @@ function startAutoCloseTimeout() {
             return;
           }
           stopPopupSpeech();
+          // The voices read IPA with English sounds, which turns a German /t͡ʃʏs/ into an English
+          // guess; a word in another language plays its recording, else a voice for its language.
+          if (!hasNeuralVoice(currentEntryLang())) {
+            void playToolbarHuman();
+            return;
+          }
           ipaSpeakBusy = true;
           btn.classList.add('is-speaking');
           try {

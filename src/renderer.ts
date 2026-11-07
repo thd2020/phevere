@@ -3803,6 +3803,8 @@ function playLemmaSrc(src: string, recorded: boolean): Promise<void> {
 const sayLemma = singleVoice({
   recordings: async (lemma) => {
     const api = window.electronAPI as any;
+    // A saved sentence has no recording, and looking it up first would keep it silent for seconds.
+    if (sentenceLike(lemma)) return [];
     let urls: string[] = [];
     try {
       urls = (await window.dictionaryAPI?.recordings?.(lemma)) || [];
@@ -3823,21 +3825,91 @@ const sayLemma = singleVoice({
   playRecording: (src, alive) => (alive() ? playLemmaSrc(src, true) : Promise.resolve()),
   speak: async (lemma, alive) => {
     const api = window.electronAPI as any;
-    const speech = await api?.synthesizeSpeech?.({ text: lemma, lang: 'en' });
+    const lang = lemmaLang || 'en';
+    // The neural voice reads English and Chinese; a German or French word sounds mechanical in
+    // eSpeak, so a voice for its own language speaks it first.
+    if (!/^(en|zh|cmn)/i.test(lang) && (await speakInWindow(lemma, lang, alive))) return;
+    const speech = await api?.synthesizeSpeech?.({ text: lemma, lang });
     // A newer press (or the next question) came while the voice was being made: it stays silent.
     if (!alive()) return;
     if (speech?.ok && speech.dataUrl) await playLemmaSrc(speech.dataUrl, false);
-    else showNotification(t('desktop.audio.playFailed'));
+    else if (!(await speakInWindow(lemma, lang, alive)) && alive()) showNotification(t('desktop.audio.playFailed'));
   },
   stop: () => {
     try {
       lemmaAudio?.pause();
+      window.speechSynthesis?.cancel();
     } catch {
       /* ignore */
     }
     lemmaAudio = null;
   },
 });
+
+/** The language of the word being played (`data-lang` on its button); empty means English. */
+let lemmaLang = '';
+
+/** A phrase or sentence rather than a word: four or more words, or nine or more CJK characters. */
+function sentenceLike(text: string): boolean {
+  const t = text.trim();
+  return t.split(/\s+/).length >= 4 || (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(t) && [...t].length > 8);
+}
+
+/**
+ * For a language the bundled voices cannot read (Japanese), as the pop-up's Translation tab does:
+ * an installed system voice for the language, else Google Translate's voice, a piece of up to 180
+ * characters at a time. Resolves false when neither could start.
+ */
+async function speakInWindow(text: string, lang: string, alive: () => boolean): Promise<boolean> {
+  const base = lang.toLowerCase().split(/[-_]/)[0] || 'en';
+  const synth = window.speechSynthesis;
+  if (synth) {
+    let voices = synth.getVoices();
+    if (!voices.length) {
+      await new Promise<void>((resolve) => {
+        const done = () => resolve();
+        synth.addEventListener('voiceschanged', done, { once: true });
+        setTimeout(done, 600);
+      });
+      voices = synth.getVoices();
+    }
+    const voice = voices.find((v) => v.lang.toLowerCase().split(/[-_]/)[0] === base);
+    if (voice && alive()) {
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = voice;
+      u.lang = voice.lang;
+      u.volume = Math.max(0, Math.min(1, Number(lemmaAudioPrefs.volume ?? 1)));
+      u.rate = Math.max(0.5, Math.min(2, Number(lemmaAudioPrefs.speed) || 1));
+      return new Promise<boolean>((resolve) => {
+        u.onend = () => resolve(true);
+        u.onerror = () => resolve(true);
+        synth.cancel();
+        synth.speak(u);
+      });
+    }
+  }
+  const tl = base === 'zh' ? 'zh-CN' : base;
+  const pieces: string[] = [];
+  let rest = text.trim();
+  while (rest.length > 180) {
+    let cut = Math.max(rest.lastIndexOf(' ', 180), ...['。', '！', '？', '，', '、', '.', ',', ';'].map((p) => rest.lastIndexOf(p, 179) + 1));
+    if (cut < 40) cut = 180;
+    pieces.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) pieces.push(rest);
+  let played = false;
+  for (const piece of pieces) {
+    if (!alive()) return true;
+    try {
+      await playLemmaSrc(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(tl)}&q=${encodeURIComponent(piece)}`, false);
+      played = true;
+    } catch {
+      return played;
+    }
+  }
+  return played;
+}
 
 function markLoadingSpeakers(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>('.vocab-play[data-act="nb-play"]').forEach((el) => {
@@ -3868,6 +3940,7 @@ async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise
     lemmaAudioPrefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
     if (lemmaAudioPrefs.enabled === false) return;
     btn?.classList.add('is-speaking');
+    lemmaLang = btn?.dataset.lang || '';
     try {
       // While the word's recording is still being found the button shows it is loading.
       await sayLemma(lemma, { onLoading: (on) => setSpeakerLoading(btn, on) });
