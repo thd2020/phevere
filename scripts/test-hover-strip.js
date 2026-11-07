@@ -161,6 +161,11 @@ const context = vm.createContext({
   hoverLookup: hover,
   mainWindow: null,
   ocrOverlayWindow: null,
+  settingsWindow: null,
+  externalWindows: [],
+  // A focused Phevere window under the pointer, when a case sets one.
+  phevereWindowFocused: () => !!FakeWindow.getFocusedWindow(),
+  screen: { getCursorScreenPoint: () => cursor },
   placePopupNearPoint: placement.placePopupNearPoint,
   placePanelNearPoint: placement.placePanelNearPoint,
   eventCoordSpace: placement.eventCoordSpace,
@@ -192,7 +197,7 @@ function declaration(name) {
 }
 vm.runInContext(transpile([
   'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'placePanelWindow', 'panelMovedByHand', 'hoverInsideFullPopup', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
-  'onTriggerShortcutAfterSelection', 'createPopupWindow', 'wireContextCaptureHubOnce',
+  'onTriggerShortcutAfterSelection', 'askPageForHoverWord', 'createPopupWindow', 'wireContextCaptureHubOnce',
 ].map(declaration).join('\n') + '\nglobalThis.createPopupWindow = createPopupWindow;'), context);
 context.wireContextCaptureHubOnce();
 hover.start();
@@ -270,6 +275,33 @@ function assertStripAt(win, word, message) {
   assert.equal(strips().length, 0, 'nothing under the pointer, nothing opens');
   await dwellOn(gamma, 500);
   assert.equal(strips().length, 0, 'a later hover must not be taken for the trigger');
+
+  // Over the focused Phevere window the native probe stands aside, so the trigger asks that page
+  // for the word under the pointer, in the page's own coordinates; the page's answer opens the strip.
+  const asked = [];
+  const page = {
+    isDestroyed: () => false,
+    getContentBounds: () => ({ x: 100, y: 50, width: 800, height: 600 }),
+    webContents: { getZoomFactor: () => 1.25, send: (channel, payload) => asked.push([channel, payload]) },
+  };
+  FakeWindow.getFocusedWindow = () => page;
+  now += 2000;
+  cursor = center(alpha);
+  context.onTriggerShortcutAfterSelection();
+  await flush();
+  const at = center(alpha);
+  assert.deepEqual(JSON.parse(JSON.stringify(asked)), [['hover-word-request', { x: (at.x - 100) / 1.25, y: (at.y - 50) / 1.25, screenX: at.x, screenY: at.y }]],
+    'the trigger over a Phevere page asks that page for the word');
+  assert.equal(strips().length, 0, 'nothing opens before the page answers');
+  hub.emit({ text: 'alpha', x: at.x, y: at.y, timestamp: now, origin: 'hover', coordSpace: 'dip', confidence: 0.95, requested: true });
+  await flush();
+  const asked1 = strips()[0];
+  assert.ok(asked1, "the page's answer opens the strip");
+  asked1.finishLoad();
+  assertStripAt(asked1, alpha, "the page's answer opens at the word");
+  asked1.close();
+  asked1.closed();
+  FakeWindow.getFocusedWindow = () => null;
 
   // "On" mode: hover alone opens the strip.
   context.monitorSettings.mode = 'on';
@@ -353,7 +385,7 @@ function assertStripAt(win, word, message) {
   await hover.tick();
   await flush();
   assert.equal(strips().length, 1, 'gamma opens again after the pointer left and came back');
-  assert.equal(created, 5);
+  assert.equal(created, 6);
   const again = strips()[0];
   again.finishLoad();
   again.close();
@@ -362,7 +394,7 @@ function assertStripAt(win, word, message) {
   // createPopupWindow's 1 s duplicate skip only applies while a strip is open.
   now += 100;
   context.createPopupWindow(center(gamma).x, center(gamma).y, 'dip');
-  assert.equal(created, 6, 'the same word reopens once its strip has closed');
+  assert.equal(created, 7, 'the same word reopens once its strip has closed');
   strips()[0].close();
   strips()[0].closed();
 
@@ -542,5 +574,5 @@ function assertStripAt(win, word, message) {
   context.monitorSettings.lookupOpens = 'strip';
 
   hover.stop();
-  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged (also with no will-move, as on Linux), physical selection on 150%, keeps its side as the entry sets its height, ignores hover over its own text but not the trigger; trigger reads the word under the pointer, cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
+  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged (also with no will-move, as on Linux), physical selection on 150%, keeps its side as the entry sets its height, ignores hover over its own text but not the trigger; trigger reads the word under the pointer (a focused Phevere page reads its own), cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -528,6 +528,7 @@ function onTriggerShortcutAfterSelection(): void {
     }
   }
   if (readUnderPointer && hover) {
+    if (askPageForHoverWord()) return;
     // The word comes back through the context hub marked `requested`, which opens it.
     hover.requestNow();
     log.debug('main', 'Trigger shortcut: reading the word under the pointer');
@@ -545,6 +546,22 @@ function onTriggerShortcutAfterSelection(): void {
   // The word was met in the window still in front: note it now, before the pop-up takes focus.
   rememberLookupSource(ev);
   createPopupWindow(ev.x, ev.y, eventCoordSpace(ev), true);
+}
+
+/**
+ * The trigger shortcut over the focused Phevere window: the native probe stands aside there
+ * (phevereWindowFocused), so the page reads the word under the pointer and sends it back as asked
+ * for (in-page-hover.ts). False when the pointer is elsewhere.
+ */
+function askPageForHoverWord(): boolean {
+  if (!phevereWindowFocused(mainWindow, popupWindows, settingsWindow, ocrOverlayWindow, externalWindows)) return false;
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win || win.isDestroyed() || win === ocrOverlayWindow) return false;
+  const p = screen.getCursorScreenPoint();
+  const c = win.getContentBounds();
+  const zoom = win.webContents.getZoomFactor() || 1;
+  win.webContents.send('hover-word-request', { x: (p.x - c.x) / zoom, y: (p.y - c.y) / zoom, screenX: p.x, screenY: p.y });
+  return true;
 }
 
 /** Linux desktop shortcut → `phevere --lookup-selection`: look up PRIMARY now, whatever the mode. */
@@ -2961,11 +2978,21 @@ ipcMain.on('show-popup', (_event, { x, y, text }) => {
 
 // Hover inside a Phevere page (in-page-hover.ts): the native hover skips our own windows, so the
 // page reads the word and it goes the way a hover over another app goes, under the same switches.
-ipcMain.on('in-page-hover', (_event, { x, y, text }) => {
+// `requested`: the page's answer to the trigger shortcut (askPageForHoverWord), which opens it.
+ipcMain.on('in-page-hover', (_event, { x, y, text, requested }) => {
   const word = String(text || '').trim();
   if (!word || word.length > 64 || !hoverLookup?.isRunning()) return;
   if (isPrimaryMouseDown() || hoverYieldsToSelection()) return;
-  contextCaptureHub.emit({ text: word, x: Number(x) || 0, y: Number(y) || 0, timestamp: Date.now(), origin: 'hover', coordSpace: 'dip', confidence: 0.95 });
+  contextCaptureHub.emit({
+    text: word,
+    x: Number(x) || 0,
+    y: Number(y) || 0,
+    timestamp: Date.now(),
+    origin: 'hover',
+    coordSpace: 'dip',
+    confidence: 0.95,
+    ...(requested === true ? { requested: true } : {}),
+  });
 });
 
 ipcMain.on('hide-popup', () => {

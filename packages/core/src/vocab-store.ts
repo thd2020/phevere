@@ -275,13 +275,18 @@ export async function fillEmptyDefinitions(
   return null;
 }
 
+/** Dictionaries one device may have and another not: offline packs, and services that need keys. */
+const DEVICE_SOURCE = /wordnet|webster|gcide|cedict|freedict|jmdict|kengdic|offline|oxford|collins|wordsapi|youdao/i;
+
 /**
  * Brings a saved row up to date with a finished lookup of its word: the definition, its sources,
  * the pronunciations and the part of speech become the lookup's, so the row in Words says what the
  * lookup says. A row often gets its definition from an early result, before the slower
  * dictionaries answer, and `addVocab` never replaces one. The definition is always the
  * dictionaries' (the learner writes the note), the note and context stay, and a row that already
- * matches is not written. Returns the row it changed.
+ * matches is not written. A row that took senses from a dictionary this lookup did not have (an
+ * offline pack or a keyed service set up only on the device that saved it, such as Webster 1913 on
+ * another PC) is left as it is, so that device's senses are not lost. Returns the row it changed.
  */
 export async function refreshFromLookup(
   lemmas: string[],
@@ -296,6 +301,7 @@ export async function refreshFromLookup(
     seen.add(lemma.toLowerCase());
     const existing = await findByLemma(lemma, input.sourceLang);
     if (!existing) continue;
+    if ((existing.sources || []).some((s) => DEVICE_SOURCE.test(s) && !(input.sources || []).includes(s))) return null;
     const reading = String(input.reading || '').trim() || existing.reading || '';
     const pos = input.partOfSpeech || existing.partOfSpeech || '';
     const sources = input.sources?.length ? input.sources : existing.sources || [];
