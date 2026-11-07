@@ -4388,7 +4388,7 @@ function startAutoCloseTimeout() {
                  parts.push(label ? label + ' /' + clean + '/' : '/' + clean + '/');
                };
                if (us && uk && us.ipa === uk.ipa) push('', us.ipa);
-               else { if (us) push('US', us.ipa); if (uk) push('UK', uk.ipa); }
+               else { if (uk) push('UK', uk.ipa); if (us) push('US', us.ipa); }
                list.forEach(function (p) {
                  if (p === us || p === uk) return;
                  push(p.accent === 'us' ? 'US' : p.accent === 'uk' ? 'UK' : '', p.ipa);

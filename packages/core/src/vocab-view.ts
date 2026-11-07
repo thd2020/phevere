@@ -10,9 +10,10 @@
  * meaning" (nb-copy, data-id), which copies `vocabCopyText` for that entry.
  */
 import { stripGlossText } from './lookup-policy';
-import { formatVocabLangPair, vocabLookupLang } from './vocab-lang';
+import { formatVocabLangPair, vocabHeadwordLang, vocabLookupLang } from './vocab-lang';
 import { findWordInSentence, siteOf, type SourceContext } from './source-context';
 import { bookName } from './book-names';
+import { tidyPronunciations, type AccentTag } from './pronunciation';
 import { sourceDisplayName } from './lexicon-parts';
 import { formatDate, formatList, formatRelativeTime, t, tHtml, uiLocale } from './i18n/runtime';
 
@@ -104,8 +105,12 @@ function clean(s: unknown): string {
   return t === 'null' || t === 'None' || t === 'undefined' ? '' : t;
 }
 
-/** "US /tʃɝn/ · UK /tʃɜːn/ · /tʃɜː(ɹ)n/" as labelled transcriptions, duplicates dropped. */
-export function vocabReadings(reading: unknown): Array<{ label: string; ipa: string }> {
+/**
+ * "US /tʃɝn/ · UK /tʃɜːn/ · /tʃɜː(ɹ)n/" as labelled transcriptions, duplicates dropped. With the
+ * word's language, they are put in the order the lookup now shows (`tidyPronunciations`): British,
+ * then American, then one variant, so a row saved before that reads the same as its lookup.
+ */
+export function vocabReadings(reading: unknown, lang?: string): Array<{ label: string; ipa: string }> {
   const out: Array<{ label: string; ipa: string }> = [];
   const seen = new Set<string>();
   for (const part of clean(reading).split(/\s*[·•|]\s*|\s{2,}(?=(?:US|UK)\b)/)) {
@@ -119,7 +124,23 @@ export function vocabReadings(reading: unknown): Array<{ label: string; ipa: str
     seen.add(key);
     out.push({ label: (m[1] || '').toUpperCase(), ipa });
   }
-  return out;
+  if (!lang || out.some((r) => r.label === 'AU' || r.label === 'CA')) return out;
+  const accent = (label: string): AccentTag => (label === 'US' ? 'us' : label === 'UK' ? 'uk' : 'other');
+  return tidyPronunciations(out.map((r) => ({ ipa: r.ipa.slice(1, -1), accent: accent(r.label) })), lang).map((p) => ({
+    // i18n-ignore: accent labels as dictionaries print them in every language, like the saved line
+    label: p.accent === 'us' ? 'US' : p.accent === 'uk' ? 'UK' : '',
+    ipa: `/${p.ipa}/`,
+  }));
+}
+
+/** The language a saved word is in (`vocabHeadwordLang`), for rows whose fields may be null. */
+function entryLang(e: { lemma?: string | null; sourceLang?: string | null }): string {
+  return vocabHeadwordLang({ lemma: clean(e.lemma), sourceLang: clean(e.sourceLang) });
+}
+
+/** A saved word's transcriptions in the order its lookup shows them. */
+export function entryReadings(e: { reading?: unknown; lemma?: string | null; sourceLang?: string | null }): Array<{ label: string; ipa: string }> {
+  return vocabReadings(e.reading, entryLang(e));
 }
 
 /** One sense per line of the saved definition, markup and duplicates removed. */
@@ -143,7 +164,7 @@ export function vocabSenses(definition: unknown): string[] {
  */
 export function vocabCopyText(e: Pick<VocabViewEntry, 'lemma' | 'reading' | 'partOfSpeech' | 'definition'>): string {
   const pos = clean(e.partOfSpeech);
-  const head = [clean(e.lemma), vocabReadings(e.reading)[0]?.ipa || '', pos ? POS_SHORT[pos.toLowerCase()] || pos : '']
+  const head = [clean(e.lemma), entryReadings(e)[0]?.ipa || '', pos ? POS_SHORT[pos.toLowerCase()] || pos : '']
     .filter(Boolean)
     .join(' ');
   const senses = vocabSenses(e.definition);
@@ -211,8 +232,9 @@ function posTag(pos: string): string {
   return `<span class="vocab-pos" title="${esc(pos)}">${esc(short)}</span>`;
 }
 
-function playButton(lemma: string): string {
-  return `<button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(lemma)}" title="${tHtml('notebook.list.playPronunciation')}" aria-label="${tHtml('notebook.review.play', { word: lemma })}">${ICON.play}</button>`;
+/** `lang`: the language the word is in, so a sentence saved from Japanese is read in Japanese. */
+function playButton(lemma: string, lang = ''): string {
+  return `<button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(lemma)}"${lang ? ` data-lang="${esc(lang)}"` : ''} title="${tHtml('notebook.list.playPronunciation')}" aria-label="${tHtml('notebook.review.play', { word: lemma })}">${ICON.play}</button>`;
 }
 
 /** `lang`: the language to open the word in, for a word saved in another language than its letters suggest. */
@@ -280,7 +302,7 @@ function factsHtml(e: VocabViewEntry, saved: number, now: number): string {
 
 export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(), opts: { bookPick?: boolean } = {}): string {
   const lemma = clean(e.lemma);
-  const readings = vocabReadings(e.reading);
+  const readings = entryReadings(e);
   const senses = vocabSenses(e.definition);
   const pos = clean(e.partOfSpeech);
   const note = clean(e.note);
@@ -295,7 +317,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
   const [from, to] = pair.split(/\s*→\s*/);
   const langs = from && to && from !== to ? pair : '';
   const id = esc(e.id);
-  const play = playButton(lemma);
+  const play = playButton(lemma, entryLang(e));
   const head = `<div class="vocab-row__head">
         <h3 class="vocab-lemma">${esc(lemma)}</h3>
         ${readings[0] ? `<span class="vocab-reading">${esc(readings[0].ipa)}</span>` : ''}
@@ -402,7 +424,7 @@ export function recentListHtml(
       const heading = g !== group ? `<h4 class="vocab-group">${esc(g)}</h4>` : '';
       group = g;
       const e = saved(q);
-      const reading = e ? vocabReadings(e.reading)[0] : undefined;
+      const reading = e ? entryReadings(e)[0] : undefined;
       const pos = e ? clean(e.partOfSpeech) : '';
       return `${heading}<article class="vocab-item recent-item is-collapsed${e ? ' is-saved' : ''}" data-q="${esc(q)}">
     <div class="vocab-entry__toggle" data-act="lookup" data-q="${esc(q)}" role="button" tabindex="0" aria-label="${tHtml('notebook.lookUpWord', { word: q })}">
@@ -412,7 +434,7 @@ export function recentListHtml(
         ${posTag(pos)}
       </div></div>
       <span class="vocab-row__end">
-        ${playButton(q)}
+        ${playButton(q, e ? entryLang(e) : '')}
         ${copyButtonHtml(q)}
         ${lookupButton(q)}
         ${e

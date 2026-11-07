@@ -54,8 +54,8 @@ function vocabReading(result: DictionaryResult): string | undefined {
     const uk = list.find((p) => p.accent === 'uk');
     if (us && uk && us.ipa === uk.ipa) push('', us.ipa);
     else {
-      if (us) push('US', us.ipa);
       if (uk) push('UK', uk.ipa);
+      if (us) push('US', us.ipa);
     }
     for (const p of list) {
       if (p === us || p === uk) continue;

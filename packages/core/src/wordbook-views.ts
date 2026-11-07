@@ -35,7 +35,7 @@ import {
 } from './wordbooks';
 import { bookWordKey, type UserBook } from './wordbook-store';
 import { siteIconUrl, siteMonogram } from './source-context';
-import { addToBookButtonHtml, compareAz, copyButtonHtml, vocabReadings, vocabSenses } from './vocab-view';
+import { addToBookButtonHtml, compareAz, copyButtonHtml, entryReadings, vocabSenses } from './vocab-view';
 import type { MenuItem } from './popover-menu';
 import { formatDate, formatNumber, formatPercent, t, tHtml, type MessageKey } from './i18n/runtime';
 
@@ -193,7 +193,7 @@ export function wordBookBadgesHtml(e: { books?: string[] | null }, except = ''):
 /** An opened row: pronunciation, part of speech and the first senses, as My words shows them. */
 function briefHtml(e: WordsEntry, loading: boolean): string {
   const senses = vocabSenses(e.definition).slice(0, BRIEF_SENSES);
-  const ipa = vocabReadings(e.reading)[0]?.ipa || '';
+  const ipa = entryReadings(e)[0]?.ipa || '';
   const pos = String(e.partOfSpeech || '').trim();
   const body = senses.length
     ? `<ol class="wb-brief__senses">${senses.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>`

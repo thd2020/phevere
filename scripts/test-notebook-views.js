@@ -635,7 +635,7 @@ assert.doesNotMatch(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now), /ub
   assert.match(copyButtonHtml(`rock 'n' roll`), /data-q="rock &#39;n&#39; roll"/);
   assert.equal(
     vocabCopyText({ lemma: 'braid', reading: 'US /bɹeɪd/ · UK /breɪd/', partOfSpeech: 'noun', definition: '1. A plait of hair.\n2. A <b>woven</b> band.\n2. A <b>woven</b> band.' }),
-    'braid /bɹeɪd/ n.\n1. A plait of hair.\n2. A woven band.',
+    'braid /breɪd/ n.\n1. A plait of hair.\n2. A woven band.',
   );
   assert.equal(vocabCopyText({ lemma: 'holon', definition: 'A whole that is part of a larger whole.' }), 'holon\nA whole that is part of a larger whole.');
   assert.equal(vocabCopyText({ lemma: ' quark ', definition: '' }), 'quark', 'no meaning saved: the word alone');

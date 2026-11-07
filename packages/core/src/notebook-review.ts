@@ -4,7 +4,7 @@
  * `settings-learn.ts`), the reviews due over the next two weeks and the words saved over twelve weeks. The two charts take a pointer or a tap
  * (`learn-charts.ts`).
  */
-import { vocabReadings, vocabSenses } from './vocab-view';
+import { entryReadings, vocabSenses } from './vocab-view';
 import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
 import {
   bestSense,
@@ -301,7 +301,7 @@ const ASK: Record<ReviewQuestion['kind'], MessageKey> = {
 };
 
 function promptHtml(q: ReviewQuestion, e: NotebookEntry): string {
-  const reading = vocabReadings(e.reading)[0];
+  const reading = entryReadings(e)[0];
   switch (q.kind) {
     case 'meaning-choice':
     case 'synonym-choice':
@@ -476,7 +476,7 @@ function shownSenses(e: NotebookEntry, max = 3): string[] {
 function answerCardHtml(e: NotebookEntry): string {
   const lemma = clean(e.lemma);
   const senses = shownSenses(e);
-  const readings = vocabReadings(e.reading).slice(0, 2);
+  const readings = entryReadings(e).slice(0, 2);
   const note = clean(e.note);
   return `<div class="nbv-answer">
     ${picHtml(e, senses[0] || '')}

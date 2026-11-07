@@ -112,6 +112,7 @@ import {
   parseFreeDictionaryPhonetics,
   extractIpaFromWikitext,
   mergePronunciations,
+  tidyPronunciations,
   formatPronunciationLine,
   cleanIpa,
 } from './pronunciation';
@@ -932,9 +933,10 @@ export class DictionaryService extends BaseService {
       // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
       const txProvider = opts?.translationProvider || 'auto';
-      // Switching on a Wiktionary edition must not be hidden by a result cached before it.
+      // Switching on a Wiktionary edition must not be hidden by a result cached before it. ipa:2:
+      // results cached before pronunciations were tidied (tidyPronunciations) and one language was labelled.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2${editionsOn ? `|wikt:${editionsOn}` : ''}${preferEnglishEntry ? '|en-first' : ''}${hinted ? '|chosen' : ''}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2|ipa:2${editionsOn ? `|wikt:${editionsOn}` : ''}${preferEnglishEntry ? '|en-first' : ''}${hinted ? '|chosen' : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -1542,7 +1544,10 @@ export class DictionaryService extends BaseService {
       (extra.detectedLanguage || base.detectedLanguage) === 'en' ? orderSensesByFrequency(extra.word || base.word, sorted) : sorted,
       isFormOfSense,
     );
-    const pronunciations = mergePronunciations(base.pronunciations, extra.pronunciations);
+    const pronunciations = tidyPronunciations(
+      mergePronunciations(base.pronunciations, extra.pronunciations),
+      extra.detectedLanguage || base.detectedLanguage,
+    );
     const sourceStatus: Record<string, string> = {};
     const rank = (s?: string) => (s === 'ok' ? 3 : s === 'empty' ? 2 : s === 'skip' ? 1 : 0);
     const bump = (st?: Record<string, string>) => {
@@ -2546,7 +2551,7 @@ export class DictionaryService extends BaseService {
           : datamuseIpa
             ? [{ ipa: datamuseIpa, accent: 'us' as const, source: 'Datamuse' }]
             : undefined;
-      const ipaList = mergePronunciations(pronunciations, fallbackIpa);
+      const ipaList = tidyPronunciations(mergePronunciations(pronunciations, fallbackIpa), sourceLanguage);
       const ipaLine = formatPronunciationLine(ipaList) || pronunciation;
       const wordFamily = rankFamilyByFrequency(mergeWordFamilyGroupsFor(
         headword,
@@ -2583,7 +2588,7 @@ export class DictionaryService extends BaseService {
         language: targetLanguage,
         detectedLanguage: sourceLanguage,
         ...(headGrammar ? { headGrammar } : {}),
-        ...(entryLangs && entryLangs.length > 1 ? { languages: entryLangs } : {}),
+        ...(entryLanguagesShown(entryLangs, sourceLanguage, mergedDefinitions.length > 0) ? { languages: entryLanguagesShown(entryLangs, sourceLanguage, true) } : {}),
         sources: uniqueSources,
         metadata: {
           queriedAs: opts?.originalSelection || text,
@@ -5132,6 +5137,20 @@ function englishEntryKey(title: string, lang: string): string {
  * page's order, with the one shown marked. "other" (several small languages together) and
  * Translingual are left out: neither is a language a lookup can be asked in.
  */
+/**
+ * The language row a result carries: every language when there are several; the one language
+ * when it is not English, so the entry says which language its senses are in; none for English
+ * alone. A word with senses but no Wiktionary entry is labelled with the language it was looked
+ * up in, when that is not English.
+ */
+export function entryLanguagesShown(list: EntryLanguage[] | undefined, detected: string | undefined, hasSenses: boolean): EntryLanguage[] | undefined {
+  if (list && list.length > 1) return list;
+  if (list && list.length === 1) return list[0].code === 'en' ? undefined : [{ ...list[0], current: true }];
+  const code = String(detected || '').toLowerCase().split('-')[0];
+  if (!hasSenses || !/^[a-z]{2,3}$/.test(code) || code === 'en' || code === 'auto' || code === 'und') return undefined;
+  return [{ code, name: languageDisplayName(code) || code, current: true }];
+}
+
 export function entryLanguages(page: any, shown: string): EntryLanguage[] | undefined {
   if (!page || typeof page !== 'object') return undefined;
   const list: EntryLanguage[] = [];

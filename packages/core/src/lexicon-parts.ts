@@ -409,6 +409,9 @@ export function languageSwitchHtml(
   opts: { fold?: boolean } = {},
 ): string {
   const langs = (result?.languages || []).filter((l) => l && l.code && l.name);
+  if (langs.length === 1 && langs[0].code !== 'en') {
+    return `<nav class="lx-langs" aria-label="${tHtml('lexicon.languageSwitch.label')}"><span class="lx-lang is-current" aria-current="true">${esc(languageName(langs[0].code, langs[0].name))}</span></nav>`;
+  }
   if (langs.length < 2 || !langs.some((l) => l.current)) return '';
   // English first, then the page's order, so a chip stays where it was when it is picked; the
   // language shown comes forward only when it would otherwise sit folded under "+N".

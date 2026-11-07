@@ -77,6 +77,7 @@ export {
 } from './window-title';
 export {
   vocabReadings,
+  entryReadings,
   vocabSenses,
   vocabDayGroup,
   vocabWhen,
@@ -208,6 +209,7 @@ export {
   parseFreeDictionaryPhonetics,
   extractIpaFromWikitext,
   mergePronunciations,
+  tidyPronunciations,
   formatPronunciationLine,
   recordedPronunciationUrls,
   cleanIpa,

@@ -26,6 +26,36 @@ const fixture = (name) => fs.readFileSync(path.join(FIX, name), 'utf8');
 const { arpabetToIpa, isCmuWord } = core('cmu-ipa.ts');
 const { extractIpaFromWikitext, formatPronunciationLine } = core('pronunciation.ts');
 
+// The chips read like a learner's dictionary: British, then American, one each, the
+// transcription most sources agree on leading, and one variant at most. The 'moratorium' list is
+// what Free Dictionary, Wiktionary and Kaikki sent on 2026-11-07.
+{
+  const { tidyPronunciations, inferAccent, ipaKey } = core('pronunciation.ts');
+  const shown = (list, lang = 'en') => tidyPronunciations(list, lang).map((p) => `${p.accent} ${p.ipa}`);
+  assert.deepStrictEqual(shown([
+    { ipa: 'ˌmɔ.ɹəˈtɔ.ɹi.əm', accent: 'us' },
+    { ipa: 'ˌmɒ.ɹəˈtɔː.ɹi.əm', accent: 'uk' },
+    { ipa: 'ˌmɔː.ɹəˈtɔː.ɹi.əm', accent: 'uk' },
+    { ipa: 'ˌmɒ.ɹəˈtɔː.ɹɪəm', accent: 'other' },
+    { ipa: 'ˌmɔː.ɹəˈtɔː.ɹɪəm', accent: 'other' },
+  ]), ['uk ˌmɒ.ɹəˈtɔː.ɹi.əm', 'us ˌmɔ.ɹəˈtɔ.ɹi.əm'], 'the British /mɔː-/ only adds length marks to the American line');
+  // A rare variant listed first loses to the one two sources give.
+  assert.deepStrictEqual(shown([
+    { ipa: 'ˈiː.ðə', accent: 'uk' },
+    { ipa: 'ˈaɪ.ðə', accent: 'uk' },
+    { ipa: 'ˈaɪðə', accent: 'uk' },
+  ]), ['uk ˈaɪ.ðə', 'uk ˈiː.ðə']);
+  // Unlabelled transcriptions are filed by their sounds; one that only repeats a shown one goes.
+  assert.strictEqual(inferAccent('ˈhɒlən'), 'uk');
+  assert.strictEqual(inferAccent('ˈkɑɹd'), 'us');
+  assert.strictEqual(inferAccent('ˈhɑlɚ'), 'us');
+  assert.strictEqual(inferAccent('ˈwɪmzi'), null);
+  assert.strictEqual(ipaKey('ˌmɒ.ɹəˈtɔː.ɹɪəm'), ipaKey('mɒrəˈtɔːriəm'));
+  assert.deepStrictEqual(shown([{ ipa: 'ˈwɪm.zi', accent: 'us' }, { ipa: 'ˈwɪmzi', accent: 'other' }]), ['us ˈwɪm.zi']);
+  // Another language keeps its own transcriptions, with no accent read into a Spanish r.
+  assert.deepStrictEqual(shown([{ ipa: 'aˈmor', accent: 'other' }, { ipa: 'aˈmoɾ', accent: 'other' }], 'es'), ['other aˈmor', 'other aˈmoɾ']);
+}
+
 // Datamuse writes ARPAbet with a trailing space, as its tags come.
 assert.strictEqual(arpabetToIpa('HH AA1 L AH0 N '), 'ˈhɑlən');
 assert.strictEqual(arpabetToIpa('OW0 P EH1 R AH0 N '), 'oʊˈpɛɹən');
