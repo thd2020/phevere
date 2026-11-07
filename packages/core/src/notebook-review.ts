@@ -63,6 +63,10 @@ export interface ReviewRenderOptions {
   examples?: (lemma: string) => string[] | undefined;
   /** Synonyms of a word from its dictionary entry, for "closest in meaning" questions. */
   synonyms?: (lemma: string) => string[] | undefined;
+  /** Antonyms of a word from its dictionary entry, for "opposite in meaning" questions. */
+  antonyms?: (lemma: string) => string[] | undefined;
+  /** Other words of a word's family from its dictionary entry, for word-formation questions. */
+  family?: (lemma: string) => string[] | undefined;
   /** The learner model from the answer history (`learnerModel`), for choosing questions. */
   learner?: LearnerModel | null;
   /** How much the learner studies (`studyPace`); the start card offers its number of new words a day. */
@@ -294,9 +298,11 @@ const ASK: Record<ReviewQuestion['kind'], MessageKey> = {
   'cloze-choice': 'notebook.review.ask.clozeChoice',
   'spell-tiles': 'notebook.review.ask.spellTiles',
   'synonym-choice': 'notebook.review.ask.synonymChoice',
+  'antonym-choice': 'notebook.review.ask.antonymChoice',
   recall: 'notebook.review.ask.recall',
   'listen-type': 'notebook.review.ask.listenType',
   cloze: 'notebook.review.ask.cloze',
+  'word-form': 'notebook.review.ask.wordForm',
   flash: 'notebook.review.ask.flash',
 };
 
@@ -305,6 +311,7 @@ function promptHtml(q: ReviewQuestion, e: NotebookEntry): string {
   switch (q.kind) {
     case 'meaning-choice':
     case 'synonym-choice':
+    case 'antonym-choice':
     case 'flash':
       return `<div class="nbv-quiz__word"><h3>${esc(q.lemma)}</h3>${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}${playButton(q.lemma)}</div>`;
     case 'word-choice':
@@ -313,7 +320,8 @@ function promptHtml(q: ReviewQuestion, e: NotebookEntry): string {
       return `<p class="nbv-quiz__meaning">${esc(q.prompt)}</p>${clean(e.partOfSpeech) ? `<p class="nbv-quiz__pos">${esc(clean(e.partOfSpeech))}</p>` : ''}`;
     case 'cloze':
     case 'cloze-choice':
-      return `<p class="nbv-quiz__meaning nbv-quiz__cloze">${esc(q.prompt).replace('_____', `<span class="nbv-gap" aria-label="${tHtml('notebook.review.gap')}"></span>`)}</p>`;
+    case 'word-form':
+      return `<p class="nbv-quiz__meaning nbv-quiz__cloze">${esc(q.prompt).replace('_____', `<span class="nbv-gap" aria-label="${tHtml('notebook.review.gap')}"></span>`)}</p>${q.cue ? `<p class="nbv-quiz__cue" lang="${esc(clean(e.sourceLang) || 'en')}">${esc(q.cue)}</p>` : ''}`;
     case 'listen-choice':
     case 'listen-type':
       return `<div class="nbv-quiz__listen" data-autoplay="${esc(q.lemma)}">${playButton(q.lemma, true)}</div>`;
@@ -745,7 +753,7 @@ export function reviewHtml(all: NotebookEntry[], state: ReviewState, goal: numbe
   } else if (!state.started) {
     quiz = startHtml(entries, state, now, goal, opts);
   } else {
-    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now, examples: opts.examples, synonyms: opts.synonyms, learner: opts.learner });
+    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now, examples: opts.examples, synonyms: opts.synonyms, antonyms: opts.antonyms, family: opts.family, learner: opts.learner });
     const e = q ? entries.find((x) => x.id === q.id) : undefined;
     quiz = q && e ? questionHtml(q, e, state, opts, now) : summaryHtml(entries, state, now);
   }

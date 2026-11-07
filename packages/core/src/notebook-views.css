@@ -196,6 +196,8 @@
 .nbv-quiz__word .nbv-card__ipa { margin: 0; flex-basis: 100%; order: 3; font-size: 15px; }
 .nbv-quiz__meaning { margin: 0; font: 500 clamp(18px, 3.4vw, 21px)/1.45 var(--nbv-serif); }
 .nbv-quiz__pos { margin: -8px 0 0; font: italic 14px/1 var(--nbv-serif); color: var(--nbv-soft); }
+/* Word formation: the related word in capitals, set after the sentence as Cambridge prints it in the margin. */
+.nbv-quiz__cue { margin: -6px 0 0; align-self: flex-end; font: 600 14px/1 var(--nbv-ui); letter-spacing: 0.14em; color: var(--nbv-ember); }
 .nbv-gap { display: inline-block; width: 4.5em; height: 1.05em; margin: 0 2px; vertical-align: -0.15em; border-bottom: 2px solid var(--nbv-ember); }
 .nbv-quiz__listen { display: grid; place-items: center; padding: 8px 0; }
 .nbv-quiz .vocab-play {

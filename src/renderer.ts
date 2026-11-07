@@ -1633,6 +1633,8 @@ const wbOpen = new Set<string>();
 /* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
 const reviewSynonyms = new Map<string, string[]>();
+const reviewAntonyms = new Map<string, string[]>();
+const reviewFamily = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
 async function prefetchExamples(wait = false): Promise<void> {
@@ -1654,6 +1656,8 @@ async function prefetchExamples(wait = false): Promise<void> {
       const res = await api.examples(lemma);
       reviewExamples.set(key, Array.isArray(res) ? res : Array.isArray(res?.examples) ? res.examples : []);
       reviewSynonyms.set(key, Array.isArray(res?.synonyms) ? res.synonyms : []);
+      reviewAntonyms.set(key, Array.isArray(res?.antonyms) ? res.antonyms : []);
+      reviewFamily.set(key, Array.isArray(res?.family) ? res.family : []);
     } catch {
       /* offline: no gap-fill from examples */
     } finally {
@@ -2250,6 +2254,8 @@ function renderLearn(): void {
       formatGap: formatReviewGap,
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
       synonyms: (lemma) => reviewSynonyms.get(lemma.toLowerCase()),
+      antonyms: (lemma) => reviewAntonyms.get(lemma.toLowerCase()),
+      family: (lemma) => reviewFamily.get(lemma.toLowerCase()),
       learner: learner?.model ?? null,
       pace,
       learnPrefs,

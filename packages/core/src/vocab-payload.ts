@@ -141,6 +141,33 @@ export function synonymsFromResult(result: DictionaryResult | null): string[] {
   return out.slice(0, 6);
 }
 
+/** Antonyms for an "opposite in meaning" question, found the way `synonymsFromResult` finds synonyms. */
+export function antonymsFromResult(result: DictionaryResult | null): string[] {
+  const defs = result?.definitions || [];
+  const pos = defs[0]?.partOfSpeech;
+  const out: string[] = [];
+  const add = (raw: unknown) => {
+    const w = stripGlossText(String(raw || '')).trim();
+    if (w && !/\s/.test(w) && !out.some((x) => x.toLowerCase() === w.toLowerCase())) out.push(w);
+  };
+  for (const d of defs) if (d.partOfSpeech === pos) for (const w of d.antonyms || []) add(w);
+  for (const w of result?.antonyms || []) add(w);
+  return out.slice(0, 6);
+}
+
+/** Single words of the entry's family (derived words, the base, related forms), for word-formation questions. */
+export function familyFromResult(result: DictionaryResult | null): string[] {
+  const out: string[] = [];
+  for (const g of result?.wordFamily || []) {
+    if (g.relation !== 'derived' && g.relation !== 'lemma' && g.relation !== 'related') continue;
+    for (const item of g.items || []) {
+      const w = String(item.word || '').trim();
+      if (w && !item.rare && /^\p{L}+$/u.test(w) && !out.includes(w)) out.push(w);
+    }
+  }
+  return out.slice(0, 20);
+}
+
 export function examplesFromResult(result: DictionaryResult | null): string[] {
   const out: string[] = [];
   for (const d of result?.definitions || []) {

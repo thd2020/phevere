@@ -77,6 +77,8 @@ import {
   vocabPayloadFromResult,
   examplesFromResult,
   synonymsFromResult,
+  antonymsFromResult,
+  familyFromResult,
   QUESTION_KINDS,
   type AnswerDetails,
 } from '@phevere/core';
@@ -3696,9 +3698,9 @@ ipcMain.handle('wordbook-meaning', async (_e, lemma: string) => {
 ipcMain.handle('wordbook-examples', async (_e, lemma: string) => {
   try {
     const result = await dictionaryService.lookup(String(lemma), 'auto');
-    return { examples: examplesFromResult(result), synonyms: synonymsFromResult(result) };
+    return { examples: examplesFromResult(result), synonyms: synonymsFromResult(result), antonyms: antonymsFromResult(result), family: familyFromResult(result) };
   } catch {
-    return { examples: [], synonyms: [] };
+    return { examples: [], synonyms: [], antonyms: [], family: [] };
   }
 });
 ipcMain.handle('wordbook-save', async (_e, lemma: string, hasMeaning?: boolean) => {

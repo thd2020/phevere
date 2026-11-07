@@ -20,6 +20,7 @@ const bundle = esbuild.buildSync({
       export * from './src/learn-adapt';
       export * from './src/pronounce-once';
       export { reviewHtml, typedPlaceholder } from './src/notebook-review';
+      export { skillFor } from './src/answer-history';
     `,
     resolveDir: path.join(root, 'packages', 'core'),
     loader: 'ts',
@@ -68,8 +69,9 @@ const now = new Date(2026, 10, 5, 9).getTime();
 {
   const v = (lemma, i, extra = {}) => ({ id: lemma, lemma, partOfSpeech: 'adjective', sourceLang: 'en', definition: `meaning ${i} of ${lemma}`, createdAt: now - 60 * DAY, ...extra });
   const words = ['decrepit', 'lucid', 'brisk', 'somber', 'placid', 'frugal'].map((l, i) => v(l, i));
-  // A young word that has faded a little: recognising it beside a synonym fits, typing it would not.
-  const young = { ...words[0], reps: 4, state: 2, stability: 2, lastReview: now - 10 * DAY, reviewDue: now };
+  // A young word that has faded: recognising it beside a synonym fits, typing it would not (a word
+  // typed right about four times in five is typed instead, `TYPED_SUCCESS`).
+  const young = { ...words[0], reps: 4, state: 2, stability: 2, lastReview: now - 25 * DAY, reviewDue: now };
   const synonyms = { decrepit: ['run-down', 'decrepitly', 'dilapidated', 'worn out', 'lucid'] };
   assert.equal(core.pickSynonym('decrepit', synonyms.decrepit), 'run-down', 'a single word, hyphen allowed');
   assert.equal(core.pickSynonym('run', ['running', 'sprint']), 'sprint', 'never a form of the word itself');
@@ -86,7 +88,7 @@ const now = new Date(2026, 10, 5, 9).getTime();
   }
   assert.ok(kinds.has('synonym-choice'), `asked as closest in meaning: ${[...kinds]}`);
   // Wrong options look like the synonym, so the odd one out is not the answer.
-  const vagary = { ...v('vagary', 9, { partOfSpeech: 'noun' }), reps: 4, state: 2, stability: 2, lastReview: now - 10 * DAY, reviewDue: now };
+  const vagary = { ...v('vagary', 9, { partOfSpeech: 'noun' }), reps: 4, state: 2, stability: 2, lastReview: now - 25 * DAY, reviewDue: now };
   const nouns = ['vinyl', 'vitrine', 'vintage', 'impasse', 'impetus', 'imprint', 'harbour'].map((l, i) => v(l, i, { partOfSpeech: 'noun' }));
   let checked = 0;
   let likeSynonym = 0;
@@ -106,6 +108,57 @@ const now = new Date(2026, 10, 5, 9).getTime();
   assert.notEqual(none.kind, 'synonym-choice', 'no synonyms looked up, no synonym question');
   const fresh = core.buildQuestion(words[1], words, { now, synonyms: () => ['clear'] }, core.seededRandom(1));
   assert.notEqual(fresh.kind, 'synonym-choice', 'a new word is not asked for a synonym');
+}
+
+/* ------------------------------------------------- opposite in meaning, word formation */
+{
+  const v = (lemma, i, extra = {}) => ({ id: lemma, lemma, partOfSpeech: 'adjective', sourceLang: 'en', definition: `meaning ${i} of ${lemma}`, createdAt: now - 60 * DAY, ...extra });
+  const words = ['decrepit', 'lucid', 'brisk', 'somber', 'placid', 'frugal', 'robust', 'feeble'].map((l, i) => v(l, i));
+  const young = { ...words[0], reps: 4, state: 2, stability: 2, lastReview: now - 12 * DAY, reviewDue: now };
+  const related = { synonyms: { decrepit: ['dilapidated', 'feeble'] }, antonyms: { decrepit: ['undecrepit', 'sturdy', 'robust'] } };
+  assert.equal(core.pickAntonym('decrepit', related.antonyms.decrepit), 'sturdy', 'the word with a prefix gives itself away');
+  const kinds = new Set();
+  for (let s = 0; s < 80; s++) {
+    const q = core.buildQuestion(young, words, { now, synonyms: (l) => related.synonyms[l], antonyms: (l) => related.antonyms[l] }, core.seededRandom(s));
+    kinds.add(q.kind);
+    if (q.kind !== 'antonym-choice') continue;
+    assert.equal(q.options.length, 4);
+    assert.equal(q.options[q.correct], 'sturdy');
+    assert.ok(q.options.includes('dilapidated'), `a synonym is the tempting wrong option: ${q.options}`);
+    assert.ok(!q.options.includes('robust'), 'another antonym is never a wrong option');
+  }
+  assert.ok(kinds.has('antonym-choice'), `asked as opposite in meaning: ${[...kinds]}`);
+  const fresh = core.buildQuestion(words[1], words, { now, antonyms: () => ['murky'] }, core.seededRandom(1));
+  assert.notEqual(fresh.kind, 'antonym-choice', 'a new word is not asked for an antonym');
+
+  // Word formation: the sentence's gap, a relative in capitals, the form typed with no letter shown.
+  assert.equal(core.familyCue('decrepit', ['decrepitude', 'decrepitly', 'decrepits', 'old']), 'decrepitly', 'the shortest relative, never an inflection');
+  assert.equal(core.familyCue('run', ['runner']), '', 'too short a word to form');
+  const sentence = { ...v('decrepit', 0), note: 'The old barn was decrepit and leaned to one side.', reps: 6, state: 2, stability: 30, lastReview: now - 30 * DAY, reviewDue: now };
+  const formKinds = new Set();
+  for (let s = 0; s < 80; s++) {
+    const q = core.buildQuestion(sentence, words, { now, family: () => ['decrepitude'] }, core.seededRandom(s));
+    formKinds.add(q.kind);
+    if (q.kind !== 'word-form') continue;
+    assert.equal(q.cue, 'DECREPITUDE');
+    assert.match(q.prompt, /_____/);
+    assert.ok(q.answers.includes('decrepit'));
+    assert.equal(q.reveal, 0, 'the capitals are the cue; no letter is shown');
+    const html = core.reviewHtml([sentence, ...words.slice(1)], { ...core.startReview([sentence], 10, now), started: true, question: q }, 10, { now });
+    assert.match(html, /class="nbv-quiz__cue"[^>]*>DECREPITUDE</);
+    assert.match(html, /Fill the gap with a form of the word in capitals/);
+  }
+  assert.ok(formKinds.has('word-form'), `asked as word formation: ${[...formKinds]}`);
+  assert.equal(core.buildQuestion(sentence, words, { now }, core.seededRandom(1)).kind === 'word-form', false, 'no family looked up, no word formation');
+  assert.equal(core.skillFor('antonym-choice'), 'meaning');
+  assert.equal(core.skillFor('synonym-choice'), 'meaning');
+  assert.equal(core.skillFor('word-form'), 'spelling');
+
+  // Typed questions aim lower than choices, back up towards 85% for a learner who mistypes.
+  assert.equal(core.successAim('word-choice', null), core.TARGET_SUCCESS);
+  assert.equal(core.successAim('recall', null), core.TYPED_SUCCESS);
+  assert.ok(core.successAim('recall', { offset: { recall: -1.5, cloze: -1.2 }, right: {} }) > core.TYPED_SUCCESS, 'a weak speller is typed at a safer aim');
+  assert.ok(core.successAim('recall', { offset: { recall: 1, cloze: 1 }, right: {} }) < core.TYPED_SUCCESS, 'a good speller a little harder');
 }
 
 /* ------------------------------------------------- kinds, cues and hints */
@@ -131,7 +184,9 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
       assert.equal(lq.hint, 'h');
     }
   }
-  assert.ok(lateKinds.has('word-choice') && [...lateKinds].every((k) => ['recall', 'word-choice', 'spell-tiles'].includes(k)), `${[...lateKinds]}`);
+  // Typed about three times in four, it is typed: typed questions aim lower than choices
+  // (`TYPED_SUCCESS`), and nothing harder than its first letter is offered.
+  assert.ok([...lateKinds].every((k) => ['recall', 'word-choice', 'spell-tiles'].includes(k)), `${[...lateKinds]}`);
   // Long forgotten: it steps back to recognition.
   const lost = { ...firm, lastReview: now - 400 * DAY };
   const kinds = new Set();

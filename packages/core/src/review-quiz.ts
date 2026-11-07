@@ -35,6 +35,12 @@ export type { ReviewGrade };
  * - synonym-choice: the word is shown, pick the word closest in meaning among four (TOEFL's
  *   "closest in meaning to", the GRE's synonym items); the right one is a synonym from the word's
  *   dictionary entry, the others are words from the notebook.
+ * - antonym-choice: the word is shown, pick the word opposite in meaning among four (the GRE's
+ *   antonym items, TEM-4's "opposite in meaning"); one wrong option is a synonym when the entry
+ *   lists one, since mistaking the direction is the usual slip, the rest are notebook words.
+ * - word-form: a sentence with a gap and a related word in capitals, type the form that fits
+ *   (Cambridge B2 First and C1 Advanced, Use of English part 3); the capitals are another word of
+ *   the family ("DECREPITUDE" for "decrepit"), so the learner produces the word and its form.
  * - flash: show the word, then the meaning, and the learner says whether they knew it; used only
  *   when nothing else can be asked (no meaning saved and too few other words).
  */
@@ -45,13 +51,15 @@ export type QuestionKind =
   | 'cloze-choice'
   | 'spell-tiles'
   | 'synonym-choice'
+  | 'antonym-choice'
   | 'recall'
   | 'listen-type'
   | 'cloze'
+  | 'word-form'
   | 'flash';
 
 /** Every kind, for checking a kind that comes from storage or another process. */
-export const QUESTION_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice', 'spell-tiles', 'synonym-choice', 'recall', 'listen-type', 'cloze', 'flash'];
+export const QUESTION_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice', 'spell-tiles', 'synonym-choice', 'antonym-choice', 'recall', 'listen-type', 'cloze', 'word-form', 'flash'];
 
 /** A typo is one slip in a word the learner otherwise spelt right (`checkTyped`); it counts as right. */
 export type AnswerResult = 'right' | 'typo' | 'wrong';
@@ -94,6 +102,8 @@ export interface ReviewQuestion {
   tiles?: string[];
   /** Letter tiles placed so far, by their place in `tiles`, in the order tapped. */
   placed?: number[];
+  /** Word formation: the related word printed in capitals after the sentence. */
+  cue?: string;
 }
 
 export interface ReviewAnswer {
@@ -163,6 +173,10 @@ export interface QuestionOptions {
   examples?: (lemma: string) => string[] | undefined;
   /** Synonyms of a word (from its dictionary entry), for "closest in meaning" questions. */
   synonyms?: (lemma: string) => string[] | undefined;
+  /** Antonyms of a word (from its dictionary entry), for "opposite in meaning" questions. */
+  antonyms?: (lemma: string) => string[] | undefined;
+  /** Other words of a word's family (from its dictionary entry), for word-formation questions. */
+  family?: (lemma: string) => string[] | undefined;
   /** Kinds asked so far this session, oldest first, for the skill balance. */
   asked?: QuestionKind[];
   /** How often this word was asked earlier in this session. */
@@ -902,8 +916,8 @@ export function pickDistractors(
 export const STAGE_KINDS: Record<number, QuestionKind[]> = {
   0: ['meaning-choice', 'word-choice', 'flash'],
   1: ['word-choice', 'cloze-choice', 'meaning-choice', 'listen-choice', 'spell-tiles', 'synonym-choice', 'recall', 'cloze', 'flash'],
-  2: ['recall', 'cloze-choice', 'synonym-choice', 'word-choice', 'cloze', 'spell-tiles', 'listen-type', 'listen-choice', 'meaning-choice', 'flash'],
-  3: ['cloze', 'recall', 'synonym-choice', 'listen-type', 'cloze-choice', 'word-choice', 'meaning-choice', 'flash'],
+  2: ['recall', 'cloze-choice', 'synonym-choice', 'antonym-choice', 'word-choice', 'cloze', 'word-form', 'spell-tiles', 'listen-type', 'listen-choice', 'meaning-choice', 'flash'],
+  3: ['cloze', 'word-form', 'recall', 'synonym-choice', 'antonym-choice', 'listen-type', 'cloze-choice', 'word-choice', 'meaning-choice', 'flash'],
 };
 
 export type QuizSkill = 'meaning' | 'spelling' | 'listening';
@@ -913,19 +927,27 @@ const KIND_SKILL: Record<QuestionKind, QuizSkill> = {
   'word-choice': 'meaning',
   'cloze-choice': 'meaning',
   'synonym-choice': 'meaning',
+  'antonym-choice': 'meaning',
   flash: 'meaning',
   'spell-tiles': 'spelling',
   recall: 'spelling',
   cloze: 'spelling',
+  'word-form': 'spelling',
   'listen-choice': 'listening',
   'listen-type': 'listening',
 };
 
 /** Kinds answered by typing the word. */
-export const TYPED_KINDS: QuestionKind[] = ['recall', 'cloze', 'listen-type'];
+export const TYPED_KINDS: QuestionKind[] = ['recall', 'cloze', 'listen-type', 'word-form'];
 
-/** Shares of a session each skill aims at; listening also has a hard cap (LISTEN_CAP). */
-export const SKILL_TARGET: Record<QuizSkill, number> = { meaning: 0.5, spelling: 0.35, listening: 0.15 };
+/**
+ * Shares of a session each skill aims at; listening also has a hard cap (LISTEN_CAP). Producing
+ * the word (spelling) gets nearly as much as recognising it: typed recall teaches more per
+ * question than picking from four (Nakata 2011; Karpicke and Roediger 2008), and four-option
+ * questions overrate what a learner knows by about a fifth against gap-fills (Sevigny et al.
+ * 2024).
+ */
+export const SKILL_TARGET: Record<QuizSkill, number> = { meaning: 0.45, spelling: 0.4, listening: 0.15 };
 
 /**
  * The share of right answers the choice of kind aims at. Wilson et al. (2019) derive about 85%
@@ -935,13 +957,40 @@ export const SKILL_TARGET: Record<QuizSkill, number> = { meaning: 0.5, spelling:
 export const TARGET_SUCCESS = 0.85;
 
 /**
+ * Typed questions aim lower: a recall that takes effort and still succeeds is what strengthens
+ * memory (Bjork's desirable difficulties), so a word a learner would type right about four times in
+ * four is asked typed rather than as an easy choice, while one that has faded below that is still
+ * recognised first, since a miss sends it back to relearning. The aim moves back towards TARGET_SUCCESS for
+ * a learner whose typed answers go wrong more often than predicted, so typing never becomes a run
+ * of misses, and a little lower for one who types well.
+ */
+export const TYPED_SUCCESS = 0.78;
+
+/** The share of right answers a kind aims at for this learner (`TARGET_SUCCESS`, `TYPED_SUCCESS`). */
+export function successAim(kind: QuestionKind, learner?: LearnerModel | null): number {
+  if (!TYPED_KINDS.includes(kind)) return TARGET_SUCCESS;
+  const typed = typedOffset(learner);
+  return Math.min(TARGET_SUCCESS, Math.max(0.72, TYPED_SUCCESS - 0.05 * typed));
+}
+
+/** How much better (+) or worse (-) than predicted a learner types, averaged over the typed kinds they have answered. */
+function typedOffset(learner?: LearnerModel | null): number {
+  if (!learner) return 0;
+  const seen = TYPED_KINDS.filter((k) => k !== 'listen-type' && learner.offset[k] != null);
+  return seen.length ? seen.reduce((n, k) => n + (learner.offset[k] || 0), 0) / seen.length : 0;
+}
+
+/**
  * How much easier (+) or harder (-) each kind is than typing the word from its meaning with its
  * first letter, in log-odds. The order is Laufer and Goldstein's (2004): recognising a meaning is
  * easiest, then recognising the word, then recalling it; dictation adds hearing to spelling.
  * Picking the word for a sentence's gap is recognition with the sentence as a cue, about as easy
  * as picking it from its meaning; building it from its own letters sits between recognising and
  * typing it. Picking a synonym asks the learner to know two words, so it is harder than either
- * choice from a meaning. The learner model corrects each value for each learner.
+ * choice from a meaning, and an antonym a little harder again, with a synonym among the wrong
+ * options. Forming the word from a relative in capitals gives most of its letters but none of its
+ * ending, about as hard as typing it into a gap. The learner model corrects each value for each
+ * learner.
  */
 export const KIND_EASE: Record<QuestionKind, number> = {
   'meaning-choice': 1.8,
@@ -951,7 +1000,9 @@ export const KIND_EASE: Record<QuestionKind, number> = {
   flash: 1.0,
   'spell-tiles': 0.8,
   'synonym-choice': 0.7,
+  'antonym-choice': 0.6,
   cloze: 0.1,
+  'word-form': 0.1,
   recall: 0,
   'listen-type': -0.5,
 };
@@ -969,8 +1020,10 @@ export const LETTER_EASE = 0.45;
 export const KIND_UNLOCK: Partial<Record<QuestionKind, { after: QuestionKind[]; right: number }>> = {
   'spell-tiles': { after: ['word-choice', 'meaning-choice', 'cloze-choice'], right: 3 },
   'synonym-choice': { after: ['meaning-choice', 'word-choice', 'cloze-choice'], right: 5 },
+  'antonym-choice': { after: ['meaning-choice', 'word-choice', 'cloze-choice', 'synonym-choice'], right: 8 },
   recall: { after: ['word-choice', 'meaning-choice'], right: 5 },
   cloze: { after: ['recall'], right: 3 },
+  'word-form': { after: ['cloze', 'recall'], right: 5 },
   'listen-type': { after: ['listen-choice', 'recall', 'cloze'], right: 3 },
 };
 
@@ -1018,7 +1071,8 @@ export function eloStep(offset: number, outcome: number, predicted: number, answ
 
 /** Letters a typed kind usually shows: the first letter, none for dictation. */
 function baseLetters(kind: QuestionKind): number {
-  return kind === 'listen-type' ? 0 : 1;
+  // Word formation's cue is the word in capitals, which already shows most of the letters.
+  return kind === 'listen-type' || kind === 'word-form' ? 0 : 1;
 }
 
 /** Predicted chance of a right answer to `kind` for a word of `strength`, with `letters` shown. */
@@ -1044,8 +1098,7 @@ export function cueLetters(kind: QuestionKind, answer: string, _strength?: numbe
  */
 export function skillTargets(learner?: LearnerModel | null): Record<QuizSkill, number> {
   if (!learner) return SKILL_TARGET;
-  const typed = ((learner.offset.recall || 0) + (learner.offset.cloze || 0)) / 2;
-  const spelling = Math.min(0.45, Math.max(0.15, SKILL_TARGET.spelling + 0.2 * typed));
+  const spelling = Math.min(0.5, Math.max(0.15, SKILL_TARGET.spelling + 0.2 * typedOffset(learner)));
   return { meaning: 1 - spelling - SKILL_TARGET.listening, spelling, listening: SKILL_TARGET.listening };
 }
 
@@ -1074,11 +1127,13 @@ export interface KindChoice {
   predict?: (kind: QuestionKind) => number;
   /** Skill aims (`skillTargets`). */
   targets?: Record<QuizSkill, number>;
+  /** The share of right answers each kind aims at (`successAim`); TARGET_SUCCESS for every kind without it. */
+  aim?: (kind: QuestionKind) => number;
 }
 
 /**
  * Picks the kind for a word among those its stage allows: the one whose predicted chance of a
- * right answer is nearest TARGET_SUCCESS (a shortfall counting double), with a kind whose skill the session already leans on
+ * right answer is nearest its aim (`successAim`; a shortfall counting double), with a kind whose skill the session already leans on
  * costing more, the previous kind costing a little, and listening only within its cap. Listening
  * passes the cap only when nothing else can be asked.
  */
@@ -1091,14 +1146,18 @@ export function chooseKind(stage: number, can: Record<QuestionKind, boolean>, as
   const last = asked[asked.length - 1];
   let best: QuestionKind | null = null;
   let bestCost = Infinity;
-  order.forEach((k, i) => {
-    if (!can[k]) return;
+  // A kind's place counts among the kinds this word can be asked, so a kind it lacks the data for
+  // (no antonym, no family word) does not push the others down.
+  order.filter((k) => can[k]).forEach((k, i) => {
     const skill = KIND_SKILL[k];
     if (skill === 'listening' && !listenOk) return;
     // Falling short of the aim costs twice as much as passing it: a miss sends the word back to
     // relearning, while an easy question still makes the learner retrieve the word.
     const p = choice.predict ? choice.predict(k) : 0;
-    const fit = choice.predict ? (p < TARGET_SUCCESS ? 2 * (TARGET_SUCCESS - p) : p - TARGET_SUCCESS) * 4 : i * 0.5;
+    // A typed kind's lower aim opens a band up to TARGET_SUCCESS in which it costs nothing; past
+    // that it is too easy, as a choice is.
+    const aim = choice.aim ? choice.aim(k) : TARGET_SUCCESS;
+    const fit = choice.predict ? (p < aim ? 2 * (aim - p) : Math.max(0, p - Math.max(aim, TARGET_SUCCESS))) * 4 : i * 0.5;
     // The plain card is the last resort, whatever the balance says.
     const cost = k === 'flash' ? 99 : fit + i * 0.1 + Math.max(0, share(skill) - targets[skill]) * 4 + (k === last ? 0.5 : 0) + rand() * 0.15;
     if (cost < bestCost) {
@@ -1192,6 +1251,50 @@ function synonymLuresFor(lemma: string, synonym: string, synonyms: string[], lur
   return out;
 }
 
+/**
+ * The antonym an "opposite in meaning" question asks for, chosen as `pickSynonym` chooses; one
+ * that is the word with a prefix ("unhappy" for "happy") is passed over, since its letters would
+ * give it away.
+ */
+export function pickAntonym(lemma: string, antonyms: string[]): string {
+  const w = clean(lemma).toLowerCase();
+  return pickSynonym(lemma, antonyms.filter((a) => !clean(a).toLowerCase().includes(w)));
+}
+
+/**
+ * Wrong options for an antonym question: notebook words that look like the antonym, and in the
+ * last place a synonym of the word when its entry lists one, the option a learner who knows the
+ * word's field but not its direction picks.
+ */
+function antonymLuresFor(lemma: string, antonym: string, antonyms: string[], synonyms: string[], lures: Array<{ lemma: string } | NotebookEntry>): Array<{ word: string; lemma: string }> {
+  const out = synonymLuresFor(lemma, antonym, [...antonyms, ...synonyms], lures);
+  const trap = pickSynonym(lemma, synonyms.filter((s) => !antonyms.some((a) => clean(a).toLowerCase() === clean(s).toLowerCase())));
+  if (trap && out.length >= 2) out.splice(Math.min(out.length, 2), 1, { word: trap, lemma: trap });
+  return out;
+}
+
+/**
+ * The word in capitals for a word-formation question, as Cambridge prints the stem after the
+ * line: another word of the family that starts with the same four letters, so it reads as the
+ * word changed, and is not one of its inflections or the form the gap takes; the shortest, which
+ * is usually the base.
+ */
+export function familyCue(lemma: string, family: string[], form = lemma): string {
+  const w = clean(lemma).toLowerCase();
+  if ([...w].length < 4) return '';
+  const own = new Set(lemmaKeys(w));
+  const stem = w.slice(0, 4);
+  const picks = family
+    .map(clean)
+    .filter((f) => /^\p{L}+$/u.test(f))
+    .filter((f) => {
+      const l = f.toLowerCase();
+      return l !== w && l !== clean(form).toLowerCase() && l.startsWith(stem) && !lemmaKeys(l).some((k) => own.has(k));
+    })
+    .sort((a, b) => a.length - b.length);
+  return picks[0] || '';
+}
+
 /** Longest word offered as letter tiles; a longer one is typed instead. */
 export const MAX_TILES = 14;
 
@@ -1240,6 +1343,12 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
   const synonymLures = synonym
     ? synonymLuresFor(lemma, synonym, opts.synonyms?.(lemma) || [], pickDistractors({ ...entry, lemma: synonym }, pool.filter((e) => e !== entry), 'word', 12, rand))
     : [];
+  const antonymList = opts.antonyms?.(lemma) || [];
+  const antonym = pickAntonym(lemma, antonymList);
+  const antonymLures = antonym
+    ? antonymLuresFor(lemma, antonym, antonymList, opts.synonyms?.(lemma) || [], pickDistractors({ ...entry, lemma: antonym }, pool.filter((e) => e !== entry), 'word', 12, rand))
+    : [];
+  const cue = cloze ? familyCue(lemma, opts.family?.(lemma) || [], cloze.form) : '';
   const can: Record<QuestionKind, boolean> = {
     'meaning-choice': hasMeaning && meaningLures.length >= 2,
     'word-choice': hasMeaning && wordLures.length >= 2,
@@ -1249,16 +1358,25 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
     // day waits for another day, as typing does; a leech may get it, as an easier way in.
     'spell-tiles': hasMeaning && tileable(lemma) && kindUnlocked('spell-tiles', learner) && !(repeat > 0 && stage <= 1),
     'synonym-choice': !!synonym && synonymLures.length >= 3 && kindUnlocked('synonym-choice', learner),
+    'antonym-choice': !!antonym && antonymLures.length >= 3 && kindUnlocked('antonym-choice', learner),
     recall: hasMeaning && open('recall'),
     'listen-type': !!opts.audio && open('listen-type'),
     cloze: !!cloze && open('cloze'),
+    'word-form': !!cloze && !!cue && open('word-form'),
     flash: hasMeaning || !clean(entry.definition),
   };
+  // Synonym and antonym questions ask the same thing, how the word sits among words of like
+  // meaning; a word that has both gets one of them, either one, so the slightly easier synonym
+  // does not always win.
+  if (can['synonym-choice'] && can['antonym-choice']) can[rand() < 0.5 ? 'synonym-choice' : 'antonym-choice'] = false;
+  // Likewise typing the word into the sentence's gap, and forming it there from a relative.
+  if (can.cloze && can['word-form']) can[rand() < 0.5 ? 'cloze' : 'word-form'] = false;
   const strength = wordStrength(entry, now);
-  const answerOf = (k: QuestionKind) => (k === 'cloze' && cloze ? cloze.form : lemma);
+  const answerOf = (k: QuestionKind) => ((k === 'cloze' || k === 'word-form') && cloze ? cloze.form : lemma);
   const lettersFor = (k: QuestionKind) => (TYPED_KINDS.includes(k) ? cueLetters(k, answerOf(k), strength, learner) : 0);
   const predict = (k: QuestionKind) => successChance(k, strength, learner, lettersFor(k));
-  const kind = chooseKind(stage, can, opts.asked || [], rand, { predict, targets: skillTargets(learner) });
+  const aim = (k: QuestionKind) => successAim(k, learner);
+  const kind = chooseKind(stage, can, opts.asked || [], rand, { predict, targets: skillTargets(learner), aim });
 
   const answers = [lemma];
   const base: ReviewQuestion = {
@@ -1301,6 +1419,17 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
     base.options = all.map((o) => o.word);
     base.optionWords = all.map((o) => o.lemma);
     base.correct = all.findIndex((o) => o.word === synonym);
+  } else if (kind === 'antonym-choice' && antonym) {
+    const all = shuffle([{ word: antonym, lemma }, ...antonymLures.slice(0, 3)], rand);
+    base.options = all.map((o) => o.word);
+    base.optionWords = all.map((o) => o.lemma);
+    base.correct = all.findIndex((o) => o.word === antonym);
+  } else if (kind === 'word-form' && cloze && cue) {
+    base.prompt = cloze.sentence;
+    base.cue = cue.toUpperCase();
+    base.answers = [...new Set([cloze.form, ...answers])];
+    base.reveal = 0;
+    base.shown = 0;
   } else if (kind === 'spell-tiles') {
     base.prompt = meaning;
     base.tiles = tileRow(lemma, rand);
@@ -1683,7 +1812,7 @@ export function answerReview(state: ReviewState, input: { choice?: number; typed
 }
 
 /** Kinds the countdown in Settings → Learn applies to: the questions answered by picking one of four. */
-export const COUNTDOWN_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice', 'synonym-choice'];
+export const COUNTDOWN_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice', 'synonym-choice', 'antonym-choice'];
 
 /** Milliseconds a question allows with a countdown of `seconds` (0 is off); 0 for kinds without one. */
 export function countdownMs(q: ReviewQuestion | null | undefined, seconds: number | null | undefined): number {
