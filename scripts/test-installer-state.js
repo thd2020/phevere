@@ -5,7 +5,7 @@ const assert = require('assert/strict');
 
 const [action, userData, fixture] = process.argv.slice(2);
 const sentinel = 'phevere-installer-upgrade-sentinel';
-const row = ['installer-upgrade-fixture', 'upgrade-fixture', 'Keep this notebook entry', 'en', 'zh', 1720000000000, 1720000000000];
+const row = ['installer-upgrade-fixture', 'upgrade-fixture', 'Keep this notebook entry.', 'en', 'zh', 1720000000000, 1720000000000];
 
 async function database() {
   const ts = require('typescript');
