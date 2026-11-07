@@ -53,17 +53,29 @@ function load(name) {
       `INSERT INTO vocab (id, lemma, part_of_speech, definition, source_lang, created_at, updated_at) VALUES (?, ?, ?, ?, 'en', ?, ?)`,
       [id, lemma, pos, def, t, t],
     );
-  old('a', 'CODON', 'noun', 'a triplet of nucleotides', 1);
-  old('b', 'Bunny', 'noun', 'a rabbit', 2);
+  old('a', 'CODON', 'noun', 'A triplet of nucleotides.', 1);
+  old('b', 'Bunny', 'noun', 'A rabbit.', 2);
   old('c', 'bunny', 'noun', '', 3);
-  old('d', 'serendipity', 'noun', 'happy chance', 4);
+  old('d', 'serendipity', 'noun', 'Happy chance.', 4);
+  // Saved by older code: a space before punctuation, Wiktionary stylesheet text, the law sense twice.
+  old('e', 'moratorium', 'noun', [
+    '(law) An authorization to a debtor, permitting temporary suspension of payments.',
+    'A suspension of an ongoing activity .',
+    'An authorization to a debtor , permitting temporary suspension of payments. .mw-parser-output .defdate{font-size:smaller}',
+    '延期偿付',
+  ].join('\n'), 5);
 
   // The first list runs the one-time pass: CODON and Bunny change, Bunny and bunny merge.
   const list = await store.listVocab(50);
   const lemmas = list.map((e) => e.lemma).sort();
-  assert.deepEqual(lemmas, ['bunny', 'codon', 'serendipity']);
+  assert.deepEqual(lemmas, ['bunny', 'codon', 'moratorium', 'serendipity']);
+  assert.equal(
+    list.find((e) => e.lemma === 'moratorium').definition,
+    ['(law) An authorization to a debtor, permitting temporary suspension of payments.', 'A suspension of an ongoing activity.', '延期偿付'].join('\n'),
+    'saved definitions are tidied once: spacing, stylesheet text, the repeated sense',
+  );
   const bunny = list.find((e) => e.lemma === 'bunny');
-  assert.equal(bunny.definition, 'a rabbit', 'the merged row keeps the saved definition');
+  assert.equal(bunny.definition, 'A rabbit.', 'the merged row keeps the saved definition');
   assert.ok(list.find((e) => e.lemma === 'codon').updatedAt > 1, 'a changed row syncs to other devices');
   assert.equal(list.find((e) => e.lemma === 'serendipity').updatedAt, 4, 'an unchanged row is left alone');
   assert.equal(await sync.normalizeStoredLemmas(), 0, 'the pass runs once');
@@ -74,7 +86,7 @@ function load(name) {
   const again = await store.addVocab({ lemma: 'CODON', partOfSpeech: 'noun', sourceLang: 'en' });
   assert.equal(again.id, 'a');
   assert.equal(again.lemma, 'codon');
-  assert.equal((await store.listVocab(50)).length, 4);
+  assert.equal((await store.listVocab(50)).length, 5);
 
   // A finished lookup replaces a saved definition, unless the row has senses from a dictionary the
   // lookup did not have (Webster 1913 installed only on the PC that saved the word).

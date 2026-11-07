@@ -106,6 +106,7 @@ import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, sameHeadword, serializeEtymologySources } from './etymology-sources';
 import { languageDisplayName, t } from './i18n/runtime';
 import { mergeSimilarDefinitions, dedupeExamples, exampleKey, tidyExample, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses, formOfSensesLast } from './definition-merge';
+import { tidySenseHtml } from './sense-text';
 import { orderSensesByFrequency, warmSenseFrequency } from './sense-frequency';
 import {
   Pronunciation,
@@ -352,6 +353,15 @@ const SOURCE_ORDER = [
   'oxford', 'collins', 'wordsApi', 'youdao', 'freeDictionary', 'wiktionary', 'jisho', 'openRussian',
   'wikt-zh', 'wikt-ru', 'wikt-ja', 'kaikki', 'offlineFallback', 'datamuse', 'cmu', 'tatoeba', 'translation',
 ];
+
+/**
+ * Sources that translate a word of another language rather than define an English one: their
+ * glosses ("house, building", "dog") stay lowercase with no stop, as bilingual dictionaries print them.
+ */
+function isGlossSource(d: Definition): boolean {
+  const names = d.sources?.length ? d.sources : [d.source];
+  return names.some((n) => Object.values(LANGUAGE_SOURCE_LABELS).includes(String(n)) || /cedict|freedict|jmdict|kengdic/i.test(String(n || '')));
+}
 
 function isLocalPackSource(source?: string): boolean {
   const k = (source || '').toLowerCase();
@@ -936,7 +946,7 @@ export class DictionaryService extends BaseService {
       // Switching on a Wiktionary edition must not be hidden by a result cached before it. ipa:2:
       // results cached before pronunciations were tidied (tidyPronunciations) and one language was labelled.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2|ipa:2${editionsOn ? `|wikt:${editionsOn}` : ''}${preferEnglishEntry ? '|en-first' : ''}${hinted ? '|chosen' : ''}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2|ipa:2|senses:1${editionsOn ? `|wikt:${editionsOn}` : ''}${preferEnglishEntry ? '|en-first' : ''}${hinted ? '|chosen' : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -2482,14 +2492,24 @@ export class DictionaryService extends BaseService {
     const buildResult = (): DictionaryResult => {
       const defSeen = new Set<string>();
       const uniqueDefinitions: Definition[] = [];
+      // The entry shown (the language row's current one, "Haus" in German), else the detected language.
+      const entryCode = entryLangs?.find((l) => l.current)?.code || (entryLangs?.length === 1 ? entryLangs[0].code : sourceLanguage);
+      const englishEntry = !entryCode || /^en(?:-|$)/i.test(entryCode);
       for (const d of definitions) {
         // Wiktionary's group headings ("Meanings relating to a wind instrument."), which the Free
         // Dictionary API passes on as senses, are not senses.
         if (/^\s*meanings? relating to\b/i.test(String(d.meaning || '').replace(/<[^>]+>/g, ' '))) continue;
-        const key = `${(d.partOfSpeech || '').toLowerCase()}|${(d.meaning || '').trim().toLowerCase()}|${(d.source || '').toLowerCase()}`;
+        // An English word's senses in one style, whichever dictionary wrote them (sense-text.ts).
+        // A foreign word's English glosses stay as written ("dog"), as bilingual dictionaries print them.
+        // A Chinese Wiktionary page still waiting for a definition says so in place of one.
+        if (/\{\{rfdef\}\}|需要翻[譯译]為?[漢汉]語|需要翻译为汉语/.test(String(d.meaning || ''))) continue;
+        // Chinese and Japanese glosses only lose the space after full-width punctuation.
+        const tidy = (englishEntry && !isGlossSource(d)) || /[぀-ヿ㐀-鿿]/.test(String(d.meaning || ''));
+        const meaning = tidy ? tidySenseHtml(d.meaning || '') : d.meaning || '';
+        const key = `${(d.partOfSpeech || '').toLowerCase()}|${meaning.toLowerCase()}|${(d.source || '').toLowerCase()}`;
         if (!defSeen.has(key)) {
           defSeen.add(key);
-          uniqueDefinitions.push(d);
+          uniqueDefinitions.push(meaning === d.meaning ? d : { ...d, meaning });
         }
       }
       const readingOrder = stripCrossLemmaSenses(

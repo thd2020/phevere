@@ -191,7 +191,7 @@ configureCore({ ...coreConfig, lookupCache: { get: () => null, set: () => {} } }
   assert.equal(savings.word, 'savings', 'a plural with a sense of its own keeps its entry');
   const senses = savings.definitions.map((d) => d.meaning);
   assert.match(senses[0], /fund of money/, 'its own sense first');
-  const plural = senses.findIndex((m) => /plural of/.test(m));
+  const plural = senses.findIndex((m) => /plural of/i.test(m));
   assert.ok(plural > 0, `"plural of saving" after it (${senses.join(' | ')})`);
 
   // "Mr" is spelt with its capital: "mr" in English is only Marathi's code and millirem (Wiktionary,

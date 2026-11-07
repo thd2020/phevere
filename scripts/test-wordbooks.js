@@ -119,7 +119,7 @@ async function main() {
     const old = new SQL.Database();
     old.run(`CREATE TABLE vocab (id TEXT PRIMARY KEY, lemma TEXT NOT NULL, reading TEXT, definition TEXT, part_of_speech TEXT, source_lang TEXT, target_lang TEXT,
       sources TEXT, note TEXT, tags TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, review_due INTEGER, review_interval INTEGER DEFAULT 0, ease REAL DEFAULT 2.5, reps INTEGER DEFAULT 0)`);
-    old.run(`INSERT INTO vocab (id, lemma, definition, created_at, updated_at, reps) VALUES ('v1', 'ability', 'being able', 1, 1, 2)`);
+    old.run(`INSERT INTO vocab (id, lemma, definition, created_at, updated_at, reps) VALUES ('v1', 'ability', 'Being able.', 1, 1, 2)`);
     const { core } = device(SQL, 'old', old);
     const cols = old.exec('PRAGMA table_info(vocab)')[0].values.map((r) => r[1]);
     for (const sql of core.vocabColumnMigrations(cols)) old.run(sql);
@@ -127,7 +127,7 @@ async function main() {
     assert.ok(tables.includes('wordbook_subs') && tables.includes('book_words'), 'tables created');
     const rows = await core.listVocab(10);
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].definition, 'being able', 'vocab row untouched');
+    assert.equal(rows[0].definition, 'Being able.', 'vocab row untouched');
     assert.equal(rows[0].reps, 2);
   }
 
