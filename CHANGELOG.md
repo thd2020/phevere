@@ -7,11 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- The trigger looks up the word under the pointer inside Phevere (2026-11-07): with Selection set to Shortcut, pressing the trigger over a word in Words, Learn, Recent or the clipboard window did nothing once the pointer had moved a little along the word or a minute had passed, because the check that reads the word under the pointer in other apps skips Phevere's own windows. The trigger now asks the Phevere page under the pointer for the word there.
-- Saved words keep senses from another computer's dictionaries (2026-11-07): since 4.3.2, a lookup on a computer without an offline dictionary, such as Webster 1913, replaced a saved word's definition and dropped the senses that dictionary had given on the computer that saved it ("decrepit" lost "Broken down with age"). A row with senses from an offline dictionary or a keyed service that the lookup did not have is now left as it is.
-
 ## [4.3.2] - 2026-11-07
 
 ### Added
@@ -29,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The trigger looks up the word under the pointer inside Phevere (2026-11-07): with Selection set to Shortcut, pressing the trigger over a word in Words, Learn, Recent or the clipboard window did nothing once the pointer had moved a little along the word or a minute had passed, because the check that reads the word under the pointer in other apps skips Phevere's own windows. The trigger now asks the Phevere page under the pointer for the word there.
+- Saved words keep senses from another computer's dictionaries (2026-11-07): a lookup on a computer without an offline dictionary, such as Webster 1913, replaced a saved word's definition and dropped the senses that dictionary had given on the computer that saved it ("decrepit" lost "Broken down with age"). A row with senses from an offline dictionary or a keyed service that the lookup did not have is now left as it is.
 - Symbols are read by name (2026-11-07): a saved mathematical letter such as 𝜓 was spelled out as "letter one D seven one three"; the voice now reads it as the plain letter, psi.
 - Saved sentences play (2026-11-07): the speaker on a saved sentence said "Could not play pronunciation" when the sentence had a stray kana in Chinese text, or was Japanese, which no bundled voice reads. Chinese with a stray kana is read as Chinese, the row's language is passed to the voice, and a language without a bundled voice uses an installed system voice or Google Translate's voice, as the Translation tab does. A sentence no longer waits for a dictionary lookup before it speaks.
 - Words in other languages sound human (2026-11-07): the pronunciation chip of a German, French or other non-English word read the transcription with English sounds, and the speaker fell back to the mechanical eSpeak voice. Both now play the word's recording, else a system voice or Google Translate's voice for its language, with eSpeak last.
