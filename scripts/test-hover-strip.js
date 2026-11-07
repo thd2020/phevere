@@ -196,7 +196,7 @@ function declaration(name) {
   return statement.getText(ast);
 }
 vm.runInContext(transpile([
-  'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'placePanelWindow', 'panelMovedByHand', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
+  'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'placePanelWindow', 'panelMovedByHand', 'focusWentToNewerPopup', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
   'onTriggerShortcutAfterSelection', 'askPageForHoverWord', 'askPageAt', 'createPopupWindow', 'wireContextCaptureHubOnce',
 ].map(declaration).join('\n') + '\nglobalThis.createPopupWindow = createPopupWindow;'), context);
 context.wireContextCaptureHubOnce();
@@ -576,6 +576,43 @@ function assertStripAt(win, word, message) {
   sticky.closed();
   context.monitorSettings.lookupOpens = 'strip';
 
+  // Hovers over an expanded pop-up's text share one strip; before, each opened a new strip window.
+  context.monitorSettings.mode = 'on';
+  for (const w of strips()) { w.close(); w.closed(); }
+  now += 3000;
+  await dwellOn(alpha);
+  const reading = strips()[0];
+  reading.finishLoad();
+  reading.setBounds({ ...reading.getBounds(), width: 460, height: 500 });
+  const inA = { text: 'onefold', x: reading.getBounds().x + 40, y: reading.getBounds().y + 80, width: 60, height: 20 };
+  const inB = { text: 'twofold', x: reading.getBounds().x + 40, y: reading.getBounds().y + 140, width: 60, height: 20 };
+  words.push(inA, inB);
+  const createdBefore = created;
+  now += 3000;
+  await dwellOn(inA);
+  const hoverStrip = strips().find((w) => w !== reading);
+  assert.ok(hoverStrip, 'a hover over the expanded pop-up opens a strip');
+  hoverStrip.finishLoad();
+  now += 3000;
+  await dwellOn(inB);
+  assert.equal(created, createdBefore + 1, 'the next hover there reuses that strip');
+  assert.equal(hoverStrip.text, 'twofold');
+  // A click back on the pop-up it came from closes the strip; the pop-up stays.
+  const clickedAway = [];
+  context.closePopupForOutsideClick = (w) => { clickedAway.push(w); w.close(); };
+  FakeWindow.getFocusedWindow = () => reading;
+  hoverStrip.emit('blur');
+  await new Promise((r) => setTimeout(r, 200));
+  assert.deepEqual(clickedAway.map((w) => w.text), ['twofold'], 'focus back on the older pop-up closes the strip');
+  // The pop-up losing focus to the newer strip stays open.
+  FakeWindow.getFocusedWindow = () => hoverStrip;
+  reading.emit('blur');
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(clickedAway.length, 1, 'a pop-up stays open beneath a strip opened from it');
+  FakeWindow.getFocusedWindow = () => null;
+  words.pop();
+  words.pop();
+
   hover.stop();
-  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged (also with no will-move, as on Linux), physical selection on 150%, keeps its side as the entry sets its height, looks up hover over its own text without moving; trigger reads the word under the pointer (a focused Phevere page reads its own), cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
+  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged (also with no will-move, as on Linux), physical selection on 150%, keeps its side as the entry sets its height, looks up hover over its own text without moving, one strip for hovers over an expanded pop-up, click back on the pop-up closes it; trigger reads the word under the pointer (a focused Phevere page reads its own), cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
 })().catch((error) => { console.error(error); process.exit(1); });

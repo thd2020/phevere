@@ -286,6 +286,17 @@ function frontPopup(): BrowserWindow | undefined {
   return ordered || live[live.length - 1];
 }
 
+/**
+ * A pop-up lost focus to one opened after it (a word looked up from it): keep it open beneath.
+ * Focus going back to an older pop-up is a click outside this one, which closes it; before, any
+ * pop-up counted, so a strip opened from a pop-up's text stayed after a click on that pop-up.
+ */
+function focusWentToNewerPopup(win: BrowserWindow, focused: BrowserWindow | null): boolean {
+  if (!focused || focused === win) return false;
+  const mine = popupWindows.indexOf(win);
+  return mine >= 0 && popupWindows.indexOf(focused) > mine;
+}
+
 function closePopupForOutsideClick(win: BrowserWindow): void {
   win.close();
   stopOutsideClickWatch();
@@ -526,6 +537,9 @@ function onTriggerShortcutAfterSelection(): void {
       readUnderPointer = left || now - ev.timestamp > TRIGGER_AFTER_SELECTION_MAX_MS;
     } else if (ev.origin === 'selection' || ev.origin === 'manual') {
       readUnderPointer = left && !hover.isHeldBySelection();
+    } else if (ev.origin === 'search') {
+      // A word opened from a list (createDictionaryWindow) was never under the pointer.
+      readUnderPointer = true;
     }
   }
   if (readUnderPointer && hover) {
@@ -1809,9 +1823,6 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
     }
   };
   const reusableStrip = popupWindows.find((win) => isCollapsedStrip(win));
-  const hasExpandedLookup = popupWindows.some(
-    (win) => isLivePopup(win) && !isCollapsedStrip(win),
-  );
 
   const applyStripTarget = (
     win: BrowserWindow,
@@ -1844,9 +1855,11 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
     }
   };
 
-  // An open lookup panel must stay put. Explicit shortcuts can immediately
-  // reopen the selected word, while any loading strip still handles only one request.
-  if (!opensFull && (!hasExpandedLookup || explicitTrigger)) {
+  // An open lookup panel stays put; only a collapsed strip is reused. Explicit shortcuts can
+  // immediately reopen the selected word, while any loading strip still handles only one request.
+  // A hover over an expanded pop-up's text reuses the strip too: skipping this opened a new
+  // strip window for every hover there, two for one word.
+  if (!opensFull) {
     const live =
       (inFlightPopup && isCollapsedStrip(inFlightPopup) ? inFlightPopup : null)
       || reusableStrip
@@ -1941,7 +1954,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
         const focused = BrowserWindow.getFocusedWindow();
         const isPopupFocused = focused === newPopupWindow;
 
-        if (!isPopupFocused && (!focused || !popupWindows.includes(focused))) {
+        if (!isPopupFocused && !focusWentToNewerPopup(newPopupWindow, focused)) {
           log.debug('main', 'Close popup on blur');
           closePopupForOutsideClick(newPopupWindow);
         } else {
@@ -4486,7 +4499,8 @@ function createDictionaryWindow(term: string, lang?: string): void {
     { space: 'dip' },
   );
 
-  setLastSelectionEvent(selectionToContext(term, 0, 0, 'manual'));
+  // A word opened from a list is a search, not a selection: hover keeps working in its window.
+  setLastSelectionEvent({ ...selectionToContext(term, 0, 0, 'manual'), origin: 'search' });
 
   const dictWindow = new BrowserWindow(withWin11Chrome({
     width: popupWidth,
@@ -4524,7 +4538,7 @@ function createDictionaryWindow(term: string, lang?: string): void {
         if (dictWindow.isDestroyed()) return;
         const focused = BrowserWindow.getFocusedWindow();
         if (focused === dictWindow) return;
-        if (focused && popupWindows.includes(focused)) return;
+        if (focusWentToNewerPopup(dictWindow, focused)) return;
         closePopupForOutsideClick(dictWindow);
       } catch (e) {
         log.warn('main', 'History lookup blur check failed', { err: String(e) });
