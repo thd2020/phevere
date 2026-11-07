@@ -77,6 +77,8 @@ import {
   vocabPayloadFromResult,
   examplesFromResult,
   synonymsFromResult,
+  antonymsFromResult,
+  familyFromResult,
   QUESTION_KINDS,
   type AnswerDetails,
 } from '@phevere/core';
@@ -151,6 +153,7 @@ import {
   applyDictionaryResultToNotebook,
   cancelVocabEnrich,
   enqueueVocabEnrich,
+  refreshVocabEntry,
   startVocabEnricher,
   stopVocabEnricher,
 } from './services/vocab-enrich';
@@ -2956,6 +2959,15 @@ ipcMain.on('show-popup', (_event, { x, y, text }) => {
   rememberAndMaybeOpenPopup(x, y, text);
 });
 
+// Hover inside a Phevere page (in-page-hover.ts): the native hover skips our own windows, so the
+// page reads the word and it goes the way a hover over another app goes, under the same switches.
+ipcMain.on('in-page-hover', (_event, { x, y, text }) => {
+  const word = String(text || '').trim();
+  if (!word || word.length > 64 || !hoverLookup?.isRunning()) return;
+  if (isPrimaryMouseDown() || hoverYieldsToSelection()) return;
+  contextCaptureHub.emit({ text: word, x: Number(x) || 0, y: Number(y) || 0, timestamp: Date.now(), origin: 'hover', coordSpace: 'dip', confidence: 0.95 });
+});
+
 ipcMain.on('hide-popup', () => {
   cancelIpaSpeak();
   popupWindows.forEach(win => {
@@ -3624,6 +3636,7 @@ ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4, deta
   return vocabStore.reviewVocab(id, grade, Date.now(), answerDetailsFrom(details));
 });
 ipcMain.handle('vocab-history', async () => listAnswerHistory());
+ipcMain.on('vocab-refresh', (_e, lemma: string) => refreshVocabEntry(String(lemma || '')));
 // A destructive step asks first, in the system's own dialog like the import questions.
 ipcMain.handle('vocab-confirm', async (e, ask: { message?: unknown; detail?: unknown; confirm?: unknown }) => {
   const win = BrowserWindow.fromWebContents(e.sender);
@@ -3685,9 +3698,9 @@ ipcMain.handle('wordbook-meaning', async (_e, lemma: string) => {
 ipcMain.handle('wordbook-examples', async (_e, lemma: string) => {
   try {
     const result = await dictionaryService.lookup(String(lemma), 'auto');
-    return { examples: examplesFromResult(result), synonyms: synonymsFromResult(result) };
+    return { examples: examplesFromResult(result), synonyms: synonymsFromResult(result), antonyms: antonymsFromResult(result), family: familyFromResult(result) };
   } catch {
-    return { examples: [], synonyms: [] };
+    return { examples: [], synonyms: [], antonyms: [], family: [] };
   }
 });
 ipcMain.handle('wordbook-save', async (_e, lemma: string, hasMeaning?: boolean) => {

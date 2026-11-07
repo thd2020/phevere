@@ -1,6 +1,7 @@
 export {
   addVocab,
   fillEmptyDefinitions,
+  refreshFromLookup,
   listEmptyDefinitions,
   listEmptyReadings,
   getVocab,

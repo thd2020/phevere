@@ -400,8 +400,9 @@ export function posGrammarHtml(codes: string[] | null | undefined): { html: stri
  * word in another language, as Wiktionary's contents list leads to each language's section.
  * English comes first, then the rest in the page's order, so picking a language does not move
  * the chips; past the first seven the rest fold under "+N" (the language shown is brought into
- * the seven), unless `fold` is false (the phone's row scrolls sideways instead). '' for a word in
- * one language only.
+ * the seven), unless `fold` is false (the phone's row scrolls sideways instead). A word in one
+ * language other than English gets that language alone, as a label, so a reader knows the senses
+ * below are, say, Latin; '' for a word in English only.
  */
 export function languageSwitchHtml(
   result: { word?: string; languages?: Array<{ code: string; name: string; current?: boolean }> } | null | undefined,
@@ -409,6 +410,9 @@ export function languageSwitchHtml(
   opts: { fold?: boolean } = {},
 ): string {
   const langs = (result?.languages || []).filter((l) => l && l.code && l.name);
+  if (langs.length === 1 && langs[0].code !== 'en') {
+    return `<nav class="lx-langs" aria-label="${tHtml('lexicon.languageSwitch.label')}"><span class="lx-lang is-current" aria-current="true">${esc(languageName(langs[0].code, langs[0].name))}</span></nav>`;
+  }
   if (langs.length < 2 || !langs.some((l) => l.current)) return '';
   // English first, then the page's order, so a chip stays where it was when it is picked; the
   // language shown comes forward only when it would otherwise sit folded under "+N".
@@ -485,6 +489,24 @@ export function glossSectionLabel(lang: string): { heading: string; tab: string 
  * for each dictionary they quote, rather than under every sense: "Definitions from Wiktionary,
  * Free Dictionary and Datamuse". `names` are display names in the senses' order; repeats drop.
  */
+/** A dictionary's short name, as the lookup's "Definitions from" line shows it (GCIDE as "Webster 1913"). */
+export function sourceDisplayName(src: string): string {
+  const s = String(src || '').trim();
+  const key = s.toLowerCase();
+  if (!s || key === 'freedictionaryapi' || key === 'free dictionary api') return s && 'Free Dictionary';
+  if (key === 'wiktionary') return 'Wiktionary';
+  if (key === 'datamuse') return 'Datamuse';
+  if (key.includes('oxford')) return 'Oxford';
+  if (key.includes('wordnet')) return 'WordNet';
+  if (key.includes('webster') || key.includes('gcide')) return 'Webster 1913';
+  if (key.includes('cedict')) return 'CC-CEDICT';
+  if (key.includes('freedict')) return 'FreeDict';
+  if (key.includes('wordsapi')) return 'WordsAPI';
+  if (key.includes('collins')) return 'Collins';
+  if (key.includes('youdao')) return 'Youdao';
+  return s;
+}
+
 export function definitionSourcesHtml(names: string[]): string {
   const list: string[] = [];
   for (const n of names.map((x) => String(x || '').trim())) if (n && !list.includes(n)) list.push(n);

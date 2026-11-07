@@ -14,6 +14,8 @@ import {
   hideSenseImage,
   unhideSenseImage,
   fillEmptyDefinitions,
+  refreshFromLookup,
+  lookupSettled,
   findByLemma,
   listEmptyDefinitions,
   listEmptyReadings,
@@ -23,6 +25,8 @@ import {
   vocabPayloadFromResult,
   examplesFromResult,
   synonymsFromResult,
+  antonymsFromResult,
+  familyFromResult,
   attachLearnCharts,
   revealQuestion,
   reviewArmed,
@@ -424,6 +428,8 @@ const wbBooks = new Map<string, string[]>();
 /* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
 const reviewSynonyms = new Map<string, string[]>();
+const reviewAntonyms = new Map<string, string[]>();
+const reviewFamily = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
 async function prefetchExamples(wait = false): Promise<void> {
@@ -444,6 +450,8 @@ async function prefetchExamples(wait = false): Promise<void> {
       const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { translationProvider: prefs.translationProvider });
       reviewExamples.set(key, examplesFromResult(res));
       reviewSynonyms.set(key, synonymsFromResult(res));
+      reviewAntonyms.set(key, antonymsFromResult(res));
+      reviewFamily.set(key, familyFromResult(res));
     } catch {
       /* offline: no gap-fill from examples */
     } finally {
@@ -1244,6 +1252,8 @@ function learnViewState(): LearnState {
       formatGap: formatReviewGap,
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
       synonyms: (lemma) => reviewSynonyms.get(lemma.toLowerCase()),
+      antonyms: (lemma) => reviewAntonyms.get(lemma.toLowerCase()),
+      family: (lemma) => reviewFamily.get(lemma.toLowerCase()),
       learner: learner?.model ?? null,
       pace,
       learnPrefs,
@@ -1697,7 +1707,12 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab, lang?:
     prefetchClips(next);
     for (const wake of [...resultWaiters]) wake(next);
     // The saved word in the language shown: "give" opened in Danish is not the English one.
-    const nextSaved = await findByLemma(saveLemma(next), next.detectedLanguage).catch(() => null);
+    let nextSaved = await findByLemma(saveLemma(next), next.detectedLanguage).catch(() => null);
+    // A saved word's card is brought up to date with a finished lookup, so it says what this page says.
+    if (nextSaved && lookupSettled(next)) {
+      const payload = vocabPayloadFromResult(next, nextSaved.lemma);
+      nextSaved = (await refreshFromLookup([nextSaved.lemma], { ...payload, sourceLang: next.detectedLanguage }).catch(() => null)) || nextSaved;
+    }
     if (generation !== lookupGeneration) return;
     saved = nextSaved;
     void loadSenseImages(generation);

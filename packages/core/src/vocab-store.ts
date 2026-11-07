@@ -275,6 +275,48 @@ export async function fillEmptyDefinitions(
   return null;
 }
 
+/**
+ * Brings a saved row up to date with a finished lookup of its word: the definition, its sources,
+ * the pronunciations and the part of speech become the lookup's, so the row in Words says what the
+ * lookup says. A row often gets its definition from an early result, before the slower
+ * dictionaries answer, and `addVocab` never replaces one. The definition is always the
+ * dictionaries' (the learner writes the note), the note and context stay, and a row that already
+ * matches is not written. Returns the row it changed.
+ */
+export async function refreshFromLookup(
+  lemmas: string[],
+  input: Omit<VocabAddInput, 'lemma'> & { lemma?: string },
+): Promise<VocabEntry | null> {
+  const definition = String(input.definition || '').trim();
+  if (!definition) return null;
+  const seen = new Set<string>();
+  for (const raw of lemmas) {
+    const lemma = (raw || '').trim();
+    if (!lemma || seen.has(lemma.toLowerCase())) continue;
+    seen.add(lemma.toLowerCase());
+    const existing = await findByLemma(lemma, input.sourceLang);
+    if (!existing) continue;
+    const reading = String(input.reading || '').trim() || existing.reading || '';
+    const pos = input.partOfSpeech || existing.partOfSpeech || '';
+    const sources = input.sources?.length ? input.sources : existing.sources || [];
+    if (
+      existing.definition === definition &&
+      (existing.reading || '') === reading &&
+      (existing.partOfSpeech || '') === pos &&
+      JSON.stringify(existing.sources || []) === JSON.stringify(sources)
+    ) {
+      return null;
+    }
+    await getVocabDb().runWrite(
+      `UPDATE vocab SET definition = ?, reading = ?, part_of_speech = ?, sources = ?, updated_at = ? WHERE id = ?`,
+      [definition, reading || null, pos || null, sources.length ? JSON.stringify(sources) : null, Date.now(), existing.id],
+    );
+    notifyChanged();
+    return getVocab(existing.id);
+  }
+  return null;
+}
+
 export async function listEmptyDefinitions(limit = 80): Promise<VocabEntry[]> {
   await ensureVocabReady();
   const rows = await getVocabDb().queryAll(

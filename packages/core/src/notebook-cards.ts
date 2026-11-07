@@ -15,7 +15,7 @@
  * and the Web Animations API plays the Invert with a spring. Only the cards near the screen
  * exist in the DOM, so a word book of thousands of words opens as fast as a list of ten.
  */
-import { vocabReadings, vocabSenses } from './vocab-view';
+import { entryReadings, vocabSenses } from './vocab-view';
 import { clean, dayStart, DAY, esc, revealBelow, scrollerOf, visibleBand, type NotebookAnalysis, type NotebookEntry } from './notebook-shared';
 import { onDoubleShake } from './shake';
 import { vocabLookupLang } from './vocab-lang';
@@ -205,7 +205,7 @@ function tableScope(entries: NotebookEntry[]): string {
 function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: string, rank: number): string {
   const w = a.words.get(e.id);
   const lemma = clean(e.lemma);
-  const reading = vocabReadings(e.reading)[0];
+  const reading = entryReadings(e)[0];
   const senses = vocabSenses(e.definition).slice(0, 8);
   const flip = ` data-act="nb-flip" data-id="${esc(e.id)}"`;
   const morphs = (w?.morphs || []).filter((m) => m.kind !== 'char' || m.gloss).slice(0, 3);

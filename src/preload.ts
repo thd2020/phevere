@@ -182,6 +182,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   rememberSelection: (x: number, y: number, text: string) => {
     ipcRenderer.send('remember-selection', { x, y, text });
   },
+  hoverWord: (x: number, y: number, text: string) => {
+    ipcRenderer.send('in-page-hover', { x, y, text });
+  },
   hidePopup: () => {
     ipcRenderer.send('hide-popup');
   },
@@ -512,6 +515,8 @@ contextBridge.exposeInMainWorld('vocabAPI', {
   updateNote: (id: string, note: string) => ipcRenderer.invoke('vocab-update-note', id, note),
   review: (id: string, grade: 1 | 2 | 3 | 4, details?: Record<string, unknown>) => ipcRenderer.invoke('vocab-review', id, grade, details),
   history: () => ipcRenderer.invoke('vocab-history'),
+  /** Look a saved word up again in the background so its row matches the lookup. */
+  refresh: (lemma: string) => ipcRenderer.send('vocab-refresh', lemma),
   /** A native confirmation: resolves true when the confirm button is chosen. */
   confirm: (ask: { message: string; detail?: string; confirm: string }) => ipcRenderer.invoke('vocab-confirm', ask),
   onUpdated: (callback: (payload: { id: string; lemma: string }) => void) => {
@@ -639,6 +644,8 @@ declare global {
       removeAllListeners: (channel: string) => void;
       showPopup: (x: number, y: number, text: string) => void;
       rememberSelection?: (x: number, y: number, text: string) => void;
+      /** A word the pointer rests on in a Phevere page, at a screen point in DIP. */
+      hoverWord?: (x: number, y: number, text: string) => void;
       hidePopup: () => void;
       speakIpa?: (payload: { ipa: string; accent?: string }) => Promise<{ ok: boolean; error?: string }>;
       cancelIpaSpeak?: () => Promise<{ ok: boolean }>;
@@ -785,6 +792,7 @@ declare global {
       updateNote: (id: string, note: string) => Promise<any>;
       review: (id: string, grade: 1 | 2 | 3 | 4, details?: Record<string, unknown>) => Promise<any>;
       history: () => Promise<any[]>;
+      refresh?: (lemma: string) => void;
       onUpdated: (callback: (payload: { id: string; lemma: string }) => void) => void;
     };
     accountAPI: {

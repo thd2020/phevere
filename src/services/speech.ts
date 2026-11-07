@@ -300,12 +300,24 @@ function isChinese(text: string, lang?: string): boolean {
  */
 const NO_LOCAL_VOICE = new Set(['ja']);
 
+/**
+ * Chinese text with a kana character or two in it, such as an OCR slip that read 口 as ロ. Written
+ * Japanese has kana in nearly every clause (particles, verb endings), so a sentence of six or more
+ * kanji with almost no kana is Chinese, whatever language it was saved as.
+ */
+export function strayKana(text: string): boolean {
+  const kana = (text.match(/[\u3040-\u30ff]/g) || []).length;
+  const han = (text.match(/[\u3400-\u9fff]/g) || []).length;
+  return kana > 0 && han >= 6 && kana / (kana + han) < 0.15;
+}
+
 /** eSpeak voice for a BCP-47-ish tag. Chinese → cmn, en-GB → en-gb, other English → en-us. */
 function espeakVoice(text: string, lang?: string): string {
   const l = String(lang || '').toLowerCase();
   const base = l.split(/[-_]/)[0];
-  // Kana or a Japanese tag is Japanese even when the text is mostly kanji; hangul is Korean.
-  if (base === 'ja' || /[\u3040-\u30ff]/.test(text)) return 'ja';
+  // Kana or a Japanese tag is Japanese even when the text is mostly kanji, unless the kana is a
+  // stray character in what is plainly Chinese; hangul is Korean.
+  if (!strayKana(text) && (base === 'ja' || /[\u3040-\u30ff]/.test(text))) return 'ja';
   if (base === 'ko' || /[\uac00-\ud7af]/.test(text)) return 'ko';
   if (isChinese(text, l)) return 'cmn';
   if (/^en[-_](gb|uk)/.test(l) || l === 'uk') return 'en-gb';
@@ -348,7 +360,9 @@ export async function synthesize(req: SpeakRequest): Promise<Uint8Array> {
     if (!phonemes) throw new Error('Cannot speak this IPA');
     return runWorker({ engine: 'espeak', text: `[[${phonemes}]]`, voice: gb ? 'en-gb' : 'en-us', speed }, 15000);
   }
-  const text = String(req.text || '').trim().slice(0, 500);
+  // NFKC folds styled letters to plain ones (mathematical italic 𝜓 to ψ, full-width Ａ to A), which
+  // the voices know by name; eSpeak would otherwise spell out the code point.
+  const text = String(req.text || '').normalize('NFKC').trim().slice(0, 500);
   if (!text) throw new Error('Nothing to speak');
   return synthesizeText(text, req.lang);
 }
@@ -430,7 +444,8 @@ const MAX_STREAM_CHARS = 5000;
 
 export function startSpeechStream(owner: number, req: { text?: string; lang?: string }): { id: number; count: number } {
   stopSpeech(owner);
-  const voice = espeakVoice(String(req.text || ''), req.lang);
+  const text = String(req.text || '').normalize('NFKC');
+  const voice = espeakVoice(text, req.lang);
   if (NO_LOCAL_VOICE.has(voice)) throw new Error(`No local voice for ${voice}`);
   // Each eSpeak call starts a fresh WebAssembly instance (about 0.2 s of CPU), and eSpeak
   // runs far faster than real time, so after the first sentence it gets one large chunk.
@@ -440,7 +455,7 @@ export function startSpeechStream(owner: number, req: { text?: string; lang?: st
   // followed by a 97-character one from a 10.6 s silence to none.
   const variant = VARIANTS.find((v) => v.id === getAudioPrefs().voice);
   const neural = !!variant && isInstalled(variant.id) && neuralSupported();
-  const chunks = splitSpeechText(String(req.text || '').slice(0, MAX_STREAM_CHARS), neural ? { max: 300, growth: 1.5 } : { max: 1500 });
+  const chunks = splitSpeechText(text.slice(0, MAX_STREAM_CHARS), neural ? { max: 300, growth: 1.5 } : { max: 1500 });
   if (!chunks.length) throw new Error('Nothing to speak');
   const id = ++streamSeq;
   streams.set(id, { owner, chunks, lang: req.lang, abort: new AbortController(), results: [], neural: true });

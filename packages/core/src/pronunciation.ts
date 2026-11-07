@@ -292,6 +292,93 @@ export function mergePronunciations(...lists: Array<Pronunciation[] | undefined>
   return deduped.slice(0, 6);
 }
 
+const VOWELS = 'aeiouyæɑɒɔəɚɛɜɝɪʊʌɐɵɘʉɨøœɤɯ';
+/** An r closing a syllable: after a vowel, before a consonant, a space or the end ("ˈkɑɹd", "ˈfɔɹ"). */
+const CODA_R = new RegExp(`[${VOWELS}ː][ɹr](?=$|\\s|[^${VOWELS}ː.\\s])`);
+
+/**
+ * The accent an unlabelled English transcription is written in, from the sounds that tell them
+ * apart: ɒ, əʊ and an optional (r) are British; ɚ, ɝ, oʊ, the flap ɾ and an r closing a syllable
+ * are American. Null when it has neither or both.
+ */
+export function inferAccent(ipa: string): 'us' | 'uk' | null {
+  const s = ipa.replace(/[ˈˌ]/g, '');
+  const uk = /ɒ|əʊ|\((ɹ|r)\)/.test(s);
+  const us = /[ɚɝɾ]|oʊ/.test(s) || CODA_R.test(s);
+  return uk === us ? null : uk ? 'uk' : 'us';
+}
+
+/**
+ * What two transcriptions of one pronunciation share: no syllable dots, ties, brackets or secondary
+ * stress, r and g in one form, ɚ as əɹ, and the unstressed "happy" vowel as i, so /ˌmɒ.ɹəˈtɔː.ɹi.əm/
+ * and /mɒrəˈtɔːrɪəm/ count as one.
+ */
+export function ipaKey(ipa: string): string {
+  return String(ipa || '')
+    .replace(/[.‿͡()ˌ\s]/g, '')
+    .replace(/r/g, 'ɹ')
+    .replace(/g/g, 'ɡ')
+    .replace(/ɚ/g, 'əɹ')
+    .replace(/ɝ/g, 'ɜɹ')
+    .replace(/ɪ(?=ə|$)/g, 'i');
+}
+
+/**
+ * The pronunciations a reader sees, the way learner's dictionaries (Cambridge, Oxford, Longman)
+ * show them: British first, then American, one each, and at most one more variant. Each accent's
+ * main one is the transcription most sources agree on, the earlier source on a tie, so a rare
+ * variant listed first by one source does not lead. An unlabelled English transcription is filed
+ * under the accent its sounds show (`inferAccent`), and one that only repeats a shown one in other
+ * notation is dropped. Other languages keep up to two. Entries with only a recording stay last for
+ * the speaker.
+ */
+export function tidyPronunciations(list: Pronunciation[] | undefined, lang?: string): Pronunciation[] {
+  const all = list || [];
+  const english = !lang || lang === 'auto' || /^en(?:$|[-_])/i.test(lang);
+  const groups = new Map<string, { p: Pronunciation; count: number; first: number; accent: AccentTag }>();
+  all.forEach((p, i) => {
+    if (!p.ipa) return;
+    const accent: AccentTag = p.accent === 'us' || p.accent === 'uk' ? p.accent : english ? inferAccent(p.ipa) || 'other' : 'other';
+    const id = `${accent}:${ipaKey(p.ipa)}`;
+    const g = groups.get(id);
+    if (g) {
+      g.count += 1;
+      if (!g.p.audioUrl && p.audioUrl) g.p = { ...g.p, audioUrl: p.audioUrl };
+    } else {
+      groups.set(id, { p: { ...p, accent }, count: 1, first: i, accent });
+    }
+  });
+  const ranked = (accent: AccentTag) =>
+    [...groups.values()].filter((g) => g.accent === accent).sort((a, b) => b.count - a.count || a.first - b.first);
+  const uk = ranked('uk');
+  const us = ranked('us');
+  const other = ranked('other');
+  const shown: Pronunciation[] = [];
+  // A variant is new only if it sounds different with length marks set aside: Wiktionary's American
+  // transcriptions often leave out the ː its British ones write.
+  const loose = (ipa: string) => ipaKey(ipa).replace(/ː/g, '');
+  const keys = new Set<string>();
+  const show = (g?: { p: Pronunciation }) => {
+    if (!g) return;
+    shown.push(g.p);
+    keys.add(loose(g.p.ipa));
+  };
+  show(uk[0]);
+  show(us[0]);
+  const labelled = shown.length > 0;
+  // Then the best-supported remaining transcription that sounds different from those shown.
+  const rest = [...uk.slice(1), ...us.slice(1), ...other].sort((a, b) => b.count - a.count || a.first - b.first);
+  let more = labelled ? 1 : 2;
+  for (const g of rest) {
+    if (more <= 0) break;
+    if (keys.has(loose(g.p.ipa))) continue;
+    show(g);
+    more -= 1;
+  }
+  const audioOnly = all.filter((p) => !p.ipa && p.audioUrl);
+  return [...shown, ...audioOnly];
+}
+
 /** Recorded clip URLs, US then UK then other — for the toolbar speaker, not IPA chips. */
 export function recordedPronunciationUrls(list?: Pronunciation[]): string[] {
   const urls: string[] = [];
@@ -322,8 +409,8 @@ export function formatPronunciationLine(list?: Pronunciation[]): string {
   if (us && uk && us.ipa === uk.ipa) {
     push('', us.ipa);
   } else {
-    if (us) push('US', us.ipa);
     if (uk) push('UK', uk.ipa);
+    if (us) push('US', us.ipa);
   }
   for (const p of list) {
     if (!p.ipa) continue;

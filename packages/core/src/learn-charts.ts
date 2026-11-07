@@ -1,19 +1,18 @@
 /**
  * Charts of the Learn tab, shared by the Today and Progress pages on desktop and phone: bar charts
  * with axes, gridlines and a readout that names the day (or bucket) under the pointer or finger,
- * a calendar heatmap with month and weekday labels, and the memory strip: one dot per word by its
- * chance of recall today, in a week or in a month without review.
+ * a calendar heatmap with month and weekday labels, and the words' recall at a day to come.
  *
  * Rendering is pure HTML and SVG. `attachLearnCharts` adds the pointer, keyboard and switch
  * behaviour; each shell calls it after painting Learn. Without it every chart still shows its
  * numbers and its default readout.
  *
  * Hooks: data-lrc (a chart), data-i (a bar or cell), template[data-for] (its readout),
- * data-lrc-readout, data-lrc-when (a moment on the memory strip), data-lrc-word (a word to point out).
+ * data-lrc-readout.
  */
-import { boldCount, esc } from './notebook-shared';
+import { esc } from './notebook-shared';
 import { DESIRED_RETENTION, recallAt } from './review-schedule';
-import { formatDate, formatNumber, formatPercent, rawHtml, t, tHtml, type MessageKey } from './i18n/runtime';
+import { formatDate, formatNumber, t, tHtml } from './i18n/runtime';
 
 const DAY = 86_400_000;
 const fmt = (n: number) => formatNumber(n);
@@ -176,8 +175,8 @@ export interface HeatmapSpec {
   id: string;
   /** One cell per day, oldest first, ending today. */
   cells: HeatCell[];
-  /** What a cell counts: "saved" (words saved), or "started" (words started in a word book). */
-  noun: string;
+  /** What a cell counts: "saved" (words saved), "started" (words started in a word book) or "answered" (answers given). */
+  noun: 'saved' | 'started' | 'answered';
   summary: string;
 }
 
@@ -191,7 +190,12 @@ export function heatmapHtml(spec: HeatmapSpec): string {
   const lead = (first.getDay() + 6) % 7; // rows before the first day in its week (Monday first)
   const max = Math.max(1, ...spec.cells.map((c) => c.count));
   const level = (c: number) => (c ? Math.min(4, Math.ceil((c / max) * 4)) : 0);
-  const started = spec.noun === 'started';
+  const keys = {
+    saved: ['notebook.charts.heat.cellSaved', 'notebook.charts.heat.labelSaved'],
+    started: ['notebook.charts.heat.cellStarted', 'notebook.charts.heat.labelStarted'],
+    answered: ['notebook.charts.heat.cellAnswered', 'notebook.charts.heat.labelAnswered'],
+  } as const;
+  const [cellKey, labelKey] = keys[spec.noun] || keys.saved;
   let months = '';
   let lastMonth = -1;
   const rects = spec.cells
@@ -207,7 +211,7 @@ export function heatmapHtml(spec: HeatmapSpec): string {
       const x = left + col * (cell + gap);
       const yy = top + row * (cell + gap);
       const date = formatDate(d, { weekday: 'short', month: 'short', day: 'numeric' });
-      const label = t(started ? 'notebook.charts.heat.cellStarted' : 'notebook.charts.heat.cellSaved', { date, count: c.count });
+      const label = t(cellKey, { date, count: c.count });
       return `<rect class="lrc-heat lrc-heat--${level(c.count)}${i === spec.cells.length - 1 ? ' is-mark' : ''}" data-i="${i}" x="${x}" y="${yy}" width="${cell}" height="${cell}" rx="2.5" tabindex="0" role="button" aria-label="${esc(label)}"/>`;
     })
     .join('');
@@ -222,14 +226,14 @@ export function heatmapHtml(spec: HeatmapSpec): string {
   const templates = spec.cells.map((c, i) => `<template data-for="${i}">${c.detail}</template>`).join('');
   const key = [0, 1, 2, 3, 4].map((l) => `<i class="lrc-heat-key lrc-heat--${l}"></i>`).join('');
   return `<div class="lrc lrc--heat" data-lrc="${esc(spec.id)}">
-    <svg class="lrc-svg lrc-svg--heat" viewBox="0 0 ${W} ${H}" role="group" aria-label="${tHtml(started ? 'notebook.charts.heat.labelStarted' : 'notebook.charts.heat.labelSaved')}">${months}${days}${rects}</svg>
+    <svg class="lrc-svg lrc-svg--heat" viewBox="0 0 ${W} ${H}" role="group" aria-label="${tHtml(labelKey)}">${months}${days}${rects}</svg>
     <p class="lrc-legend lrc-legend--heat"><span>${fmt(0)}</span>${key}<span>${tHtml('notebook.charts.heat.perDay', { count: max })}</span></p>
     <div class="lrc-readout" data-lrc-readout aria-live="polite">${spec.summary}</div>
     <template data-for="summary">${spec.summary}</template>${templates}
   </div>`;
 }
 
-/* ------------------------------------------------------------------ memory */
+/* ------------------------------------------------------------------ recall */
 
 export interface RetentionWord {
   lemma: string;
@@ -257,221 +261,6 @@ export function retentionAt(words: RetentionWord[], now: number, days: number, w
 }
 
 /** Today, a week and a month without review: the three moments the memory strip shows. */
-export const MEMORY_HORIZONS: ReadonlyArray<{ readonly days: 0 | 7 | 30; readonly label: string }> = [
-  {
-    days: 0,
-    get label() {
-      return t('notebook.charts.memory.today');
-    },
-  },
-  {
-    days: 7,
-    get label() {
-      return t('notebook.charts.memory.inWeek');
-    },
-  },
-  {
-    days: 30,
-    get label() {
-      return t('notebook.charts.memory.inMonth');
-    },
-  },
-];
-
-/** "Remembered in a week": the caption over the number for each horizon. */
-const REMEMBERED_KEY: Record<number, MessageKey> = {
-  0: 'notebook.charts.memory.remembered',
-  7: 'notebook.charts.memory.rememberedWeek',
-  30: 'notebook.charts.memory.rememberedMonth',
-};
-
-/** "87% recall in a week": a word's recall at each horizon. */
-const RECALL_KEY: Record<number, MessageKey> = {
-  0: 'notebook.charts.memory.recallToday',
-  7: 'notebook.charts.memory.recallWeek',
-  30: 'notebook.charts.memory.recallMonth',
-};
-
-export interface MemoryAt {
-  days: number;
-  /** Words you would recall: the sum of every word's chance of recall (Anki's "estimated total knowledge"). */
-  recalled: number;
-  /** Words below the target retention, which are due for review by then. */
-  below: number;
-  /** Recall of each word, in the order given. */
-  recall: number[];
-}
-
-export function memoryAt(words: RetentionWord[], now: number, days: number): MemoryAt {
-  const at = now + days * DAY;
-  const recall = words.map((w) => recallAt(w.stability, w.lastReview, at));
-  return {
-    days,
-    recalled: recall.reduce((s, r) => s + r, 0),
-    below: recall.filter((r) => r < DESIRED_RETENTION - 1e-9).length,
-    recall,
-  };
-}
-
-/** When a word's recall falls to the target: FSRS stability is the days from the last review until it does. */
-export function slipDate(w: RetentionWord): number {
-  return w.lastReview + w.stability * DAY;
-}
-
-const M_W = 320;
-const M_LEFT = 6;
-const M_RIGHT = 6;
-const M_TOP = 18;
-/** The usual height of the dot area; it grows only when the tallest stack cannot fit at the smallest dot. */
-const M_DOTS = 70;
-/** The smallest dot, so a notebook of thousands of words still fits the strip's width. */
-const M_MIN_DOT = 1;
-/** The strip runs from 50% recall at the left to 100% at the right; lower recall piles up at the left edge. */
-const M_LO = 0.5;
-
-function mx(r: number): number {
-  const v = Math.max(M_LO, Math.min(1, r));
-  return M_LEFT + ((M_W - M_LEFT - M_RIGHT) * (v - M_LO)) / (1 - M_LO);
-}
-
-export interface MemoryLayout {
-  /** Dot diameter, the same for every horizon so the dots keep their size as they move. */
-  size: number;
-  /** Per horizon, each word's centre. */
-  at: Array<Array<{ x: number; y: number }>>;
-  /** The baseline the stacks rise from; every dot lies between M_TOP and it. */
-  base: number;
-}
-
-/**
- * A beeswarm of the words along the recall axis for each horizon: words fall into columns one dot
- * wide and stack up from the baseline. The dot size is the largest that fits the tallest stack.
- */
-export function memoryLayout(recalls: number[][]): MemoryLayout {
-  const usable = M_W - M_LEFT - M_RIGHT;
-  const tallest = (size: number) =>
-    Math.max(
-      0,
-      ...recalls.map((rs) => {
-        const cols = new Map<number, number>();
-        for (const r of rs) {
-          const c = Math.round((mx(r) - M_LEFT) / size);
-          cols.set(c, (cols.get(c) || 0) + 1);
-        }
-        return Math.max(0, ...cols.values());
-      }),
-    );
-  let size = 9;
-  while (size > M_MIN_DOT && tallest(size) * size > M_DOTS) size -= size > 2 ? 0.5 : 0.25;
-  const base = M_TOP + Math.max(M_DOTS, tallest(size) * size);
-  const at = recalls.map((rs) => {
-    const order = rs.map((r, i) => ({ r, i })).sort((a, b) => b.r - a.r || a.i - b.i);
-    const height = new Map<number, number>();
-    const out: Array<{ x: number; y: number }> = new Array(rs.length);
-    for (const { r, i } of order) {
-      const c = Math.min(Math.round(usable / size), Math.max(0, Math.round((mx(r) - M_LEFT) / size)));
-      const h = height.get(c) || 0;
-      height.set(c, h + 1);
-      out[i] = { x: M_LEFT + c * size, y: base - size / 2 - h * size };
-    }
-    return out;
-  });
-  return { size, at, base };
-}
-
-export interface MemorySpec {
-  id: string;
-  words: RetentionWord[];
-  now: number;
-}
-
-/** Recall as a whole percent, rounded down, so a word just under the target never reads as 90%. */
-const recallPct = (r: number) => formatPercent(Math.floor(r * 100 + 1e-9) / 100);
-
-/**
- * The caption under the number of words you would recall: what it counts, then the due and the loss
- * as short figures. "Remembered", not "Recalled": the number is a prediction, and "recalled today"
- * read as answers given today beside a Reviews gauge at 0. "Due" is the chart's word for below 90%.
- */
-function memoryLede(m: MemoryAt, total: number, today: MemoryAt, h: (typeof MEMORY_HORIZONS)[number]): string {
-  const lost = Math.round(today.recalled) - Math.round(m.recalled);
-  const facts = [`<span>${boldCount(tHtml('notebook.charts.memory.due', { count: m.below }), m.below)}</span>`];
-  if (m.days && lost > 0) facts.push(`<span>${boldCount(tHtml('notebook.charts.memory.fewer', { count: lost }), lost)}</span>`);
-  const label = t(REMEMBERED_KEY[h.days] ?? 'notebook.charts.memory.remembered');
-  return `<span class="lrp-fig__label">${esc(label)}</span><span class="lrp-fig__sub">${tHtml('notebook.charts.memory.ofWords', { count: total })}</span><span class="lrp-fig__facts">${facts.join('')}</span>`;
-}
-
-function memoryReadout(words: RetentionWord[], m: MemoryAt, picked: number | null, now: number): string {
-  if (picked != null && words[picked]) {
-    const w = words[picked];
-    const slip = slipDate(w);
-    const when = tHtml(slip <= now ? 'notebook.charts.memory.dueSince' : 'notebook.charts.memory.dueOn', { day: dayLabel(slip) });
-    const chip = rawHtml(`<button type="button" class="lrc-chip" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button>`);
-    const pct = rawHtml(`<b>${esc(recallPct(m.recall[picked]))}</b>`);
-    return `<p class="lrc-read__head">${tHtml(RECALL_KEY[m.days] ?? 'notebook.charts.memory.recallToday', { word: chip, percent: pct })}</p><p class="lrc-read__sub">${tHtml('notebook.charts.memory.reviewed', { day: dayLabel(w.lastReview) })} · ${when}</p>`;
-  }
-  const order = m.recall.map((r, i) => ({ r, i })).sort((a, b) => a.r - b.r || words[a.i].lemma.localeCompare(words[b.i].lemma));
-  const weak = order
-    .slice(0, 8)
-    .map(({ r, i }) => `<button type="button" class="lrc-word" data-lrc-word="${i}" aria-pressed="false">${esc(words[i].lemma)}<small>${esc(recallPct(r))}</small></button>`)
-    .join('');
-  return `<p class="lrc-read__label">${tHtml('notebook.charts.memory.fadingFirst')}</p><div class="lrc-words">${weak}</div>`;
-}
-
-/**
- * Your memory now and after a week or a month without review: one dot per word placed by its
- * chance of recall, the words below 90% (due) in ember, the number of words you would recall
- * and how many fewer that is than today. A word's dot tells when it falls below 90%.
- */
-export function memoryHtml(spec: MemorySpec): string {
-  const words = spec.words;
-  const states = MEMORY_HORIZONS.map((h) => memoryAt(words, spec.now, h.days));
-  const layout = memoryLayout(states.map((s) => s.recall));
-  const today = states[0];
-  const base = layout.base;
-  // A small gap between neighbours while the dots are large enough to show one.
-  const r = layout.size >= 3 ? layout.size / 2 - 0.4 : layout.size * 0.42;
-  const dots = words
-    .map((w, i) => {
-      const p = layout.at[0][i];
-      return `<circle class="lrc-mem__dot${today.recall[i] < DESIRED_RETENTION - 1e-9 ? ' is-due' : ''}" data-w="${i}" r="${r.toFixed(2)}" style="transform:translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px);transition-delay:${Math.round((i / Math.max(1, words.length)) * 160)}ms"/>`;
-    })
-    .join('');
-  const ticks = [0.5, 0.7, 0.9, 1]
-    .map((v) => `<text class="lrc-xtick${v === DESIRED_RETENTION ? ' is-mark' : ''}" x="${mx(v).toFixed(1)}" y="${base + 14}">${v === M_LO ? `≤${formatPercent(v)}` : formatPercent(v)}</text>`)
-    .join('');
-  const target = mx(DESIRED_RETENTION);
-  const seg = MEMORY_HORIZONS.map(
-    (h, i) => `<button type="button" class="lrc-mem__when${i === 0 ? ' is-on' : ''}" data-lrc-when="${i}" aria-pressed="${i === 0}">${esc(h.label)}</button>`,
-  ).join('');
-  const data = JSON.stringify({
-    now: spec.now,
-    words: words.map((w) => [w.lemma, Math.round(w.stability * 1000) / 1000, w.lastReview]),
-  }).replace(/</g, '\\u003c');
-  return `<div class="lrc lrc--memory" data-lrc="${esc(spec.id)}">
-    <div class="lrc-mem__head">
-      <p class="lrc-mem__big" data-mem-big style="--ch:${fmt(Math.round(today.recalled)).length}">${fmt(Math.round(today.recalled))}</p>
-      <p class="lrc-mem__cap" data-mem-lede>${memoryLede(today, words.length, today, MEMORY_HORIZONS[0])}</p>
-    </div>
-    <div class="lrc-mem__chart">
-      <div class="lrc-mem__whens" role="group" aria-label="${tHtml('notebook.charts.memory.withoutReview')}">${seg}</div>
-      <svg class="lrc-svg lrc-mem__svg" viewBox="0 0 ${M_W} ${base + 20}" role="img" aria-label="${tHtml('notebook.charts.memory.chartLabel')}" tabindex="0">
-        <rect class="lrc-mem__zone" x="${M_LEFT - 2}" y="${M_TOP - 6}" width="${(target - M_LEFT + 2).toFixed(1)}" height="${base - M_TOP + 6}" rx="6"/>
-        <line class="lrc-grid is-base" x1="${M_LEFT}" x2="${M_W - M_RIGHT}" y1="${base}" y2="${base}"/>
-        <line class="lrc-grid is-target" x1="${target.toFixed(1)}" x2="${target.toFixed(1)}" y1="${M_TOP - 6}" y2="${base}"/>
-        <text class="lrc-mem__zlabel" x="${(target - 5).toFixed(1)}" y="${M_TOP + 4}">${tHtml('notebook.charts.memory.zoneDue')}</text>
-        <text class="lrc-mem__zlabel is-held" x="${(target + 5).toFixed(1)}" y="${M_TOP + 4}">${tHtml('notebook.charts.memory.zoneHeld')}</text>
-        ${ticks}
-        <g class="lrc-mem__dots">${dots}</g>
-        <circle class="lrc-mem__ring" data-mem-ring r="${(layout.size / 2 + 2.5).toFixed(2)}" style="opacity:0"/>
-      </svg>
-      <p class="lrc-xlabel">${tHtml('notebook.charts.memory.axis')}</p>
-    </div>
-    <div class="lrc-readout" data-lrc-readout aria-live="polite">${memoryReadout(words, today, null, spec.now)}</div>
-    <script type="application/json" data-lrc-data>${data}</script>
-  </div>`;
-}
-
 /* ------------------------------------------------------------------ wiring */
 
 const wired = new WeakSet<HTMLElement>();
@@ -505,140 +294,10 @@ function itemOf(target: EventTarget | null, chart: HTMLElement): HTMLElement | n
   return el && chart.contains(el) ? el : null;
 }
 
-function wireMemory(chart: HTMLElement): void {
-  let data: { now: number; words: Array<[string, number, number]> };
-  try {
-    data = JSON.parse(chart.querySelector('[data-lrc-data]')?.textContent || '');
-  } catch {
-    return;
-  }
-  const words: RetentionWord[] = data.words.map(([lemma, stability, lastReview]) => ({ lemma, stability, lastReview }));
-  const states = MEMORY_HORIZONS.map((h) => memoryAt(words, data.now, h.days));
-  const layout = memoryLayout(states.map((s) => s.recall));
-  const svg = chart.querySelector<SVGSVGElement>('.lrc-mem__svg');
-  const dots = [...chart.querySelectorAll<SVGCircleElement>('.lrc-mem__dot')];
-  const ring = chart.querySelector<SVGCircleElement>('[data-mem-ring]');
-  const big = chart.querySelector<HTMLElement>('[data-mem-big]');
-  const lede = chart.querySelector<HTMLElement>('[data-mem-lede]');
-  const out = chart.querySelector<HTMLElement>('[data-lrc-readout]');
-  let when = 0;
-  let picked: number | null = null;
-  let hover: number | null = null;
-  const place = (i: number) => layout.at[when][i];
-  const mark = () => {
-    const i = hover ?? picked;
-    if (!ring) return;
-    if (i == null) {
-      ring.style.opacity = '0';
-      return;
-    }
-    const p = place(i);
-    ring.style.opacity = '1';
-    ring.style.transform = `translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px)`;
-  };
-  const readout = () => {
-    if (out) out.innerHTML = memoryReadout(words, states[when], hover ?? picked, data.now);
-    out?.querySelectorAll<HTMLElement>('[data-lrc-word]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.lrcWord) === picked)));
-    mark();
-  };
-  const show = (next: number) => {
-    when = next;
-    const m = states[when];
-    dots.forEach((dot, i) => {
-      const p = place(i);
-      dot.style.transform = `translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px)`;
-      dot.classList.toggle('is-due', m.recall[i] < DESIRED_RETENTION - 1e-9);
-    });
-    if (big) {
-      big.textContent = fmt(Math.round(m.recalled));
-      big.style.setProperty('--ch', String(big.textContent.length));
-    }
-    if (lede) lede.innerHTML = memoryLede(m, words.length, states[0], MEMORY_HORIZONS[when]);
-    chart.querySelectorAll<HTMLElement>('[data-lrc-when]').forEach((b) => {
-      const on = Number(b.dataset.lrcWhen) === when;
-      b.classList.toggle('is-on', on);
-      b.setAttribute('aria-pressed', String(on));
-    });
-    readout();
-  };
-  /** The word whose dot is nearest the pointer, within a finger's reach. */
-  const nearest = (ev: PointerEvent | MouseEvent): number | null => {
-    if (!svg) return null;
-    const box = svg.getBoundingClientRect();
-    if (!box.width) return null;
-    const scale = M_W / box.width;
-    const x = (ev.clientX - box.left) * scale;
-    const y = (ev.clientY - box.top) * scale;
-    let best: number | null = null;
-    let dist = (ev as PointerEvent).pointerType === 'touch' ? 22 * scale : 12 * scale;
-    for (let i = 0; i < words.length; i++) {
-      const p = place(i);
-      const d = Math.hypot(p.x - x, p.y - y);
-      if (d < dist) {
-        dist = d;
-        best = i;
-      }
-    }
-    return best;
-  };
-  chart.addEventListener('click', (ev) => {
-    const w = (ev.target as Element | null)?.closest?.('[data-lrc-when]') as HTMLElement | null;
-    if (w) {
-      show(Number(w.dataset.lrcWhen) || 0);
-      return;
-    }
-    const b = (ev.target as Element | null)?.closest?.('[data-lrc-word]') as HTMLElement | null;
-    if (b) {
-      const i = Number(b.dataset.lrcWord);
-      picked = picked === i ? null : i;
-      readout();
-    }
-  });
-  svg?.addEventListener('pointermove', (ev) => {
-    if (ev.pointerType === 'touch') return;
-    const i = nearest(ev);
-    if (i === hover) return;
-    hover = i;
-    readout();
-  });
-  svg?.addEventListener('pointerleave', () => {
-    if (hover == null) return;
-    hover = null;
-    readout();
-  });
-  svg?.addEventListener('click', (ev) => {
-    const i = nearest(ev as PointerEvent);
-    picked = i == null || i === picked ? null : i;
-    hover = null;
-    readout();
-  });
-  // Arrow keys walk the words from the weakest to the strongest at the shown moment.
-  svg?.addEventListener('keydown', (ev) => {
-    const k = ev.key;
-    if (k !== 'ArrowRight' && k !== 'ArrowLeft' && k !== 'Escape') return;
-    ev.preventDefault();
-    if (k === 'Escape') {
-      picked = null;
-      readout();
-      return;
-    }
-    const order = states[when].recall.map((r, i) => ({ r, i })).sort((a, b) => a.r - b.r || a.i - b.i).map((o) => o.i);
-    const at = picked == null ? -1 : order.indexOf(picked);
-    const next = k === 'ArrowRight' ? Math.min(order.length - 1, at + 1) : Math.max(0, at - 1);
-    picked = order[next] ?? null;
-    readout();
-  });
-}
-
-/** Pointer, touch and keyboard behaviour for every chart under `root`; safe to call after each paint. */
 export function attachLearnCharts(root: ParentNode): void {
   root.querySelectorAll<HTMLElement>('[data-lrc]').forEach((chart) => {
     if (wired.has(chart)) return;
     wired.add(chart);
-    if (chart.classList.contains('lrc--memory')) {
-      wireMemory(chart);
-      return;
-    }
     chart.addEventListener('pointerover', (ev) => {
       if ((ev as PointerEvent).pointerType === 'touch') return;
       const el = itemOf(ev.target, chart);

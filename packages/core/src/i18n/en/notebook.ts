@@ -81,9 +81,11 @@ export default {
   'notebook.review.ask.clozeChoice': 'Choose the word for the gap',
   'notebook.review.ask.spellTiles': 'Spell the word',
   'notebook.review.ask.synonymChoice': 'Closest in meaning',
+  'notebook.review.ask.antonymChoice': 'Opposite in meaning',
   'notebook.review.ask.recall': 'Type the word',
   'notebook.review.ask.listenType': 'Type the word you hear',
   'notebook.review.ask.cloze': 'Fill the gap',
+  'notebook.review.ask.wordForm': 'Fill the gap with a form of the word in capitals',
   'notebook.review.ask.flash': 'Do you know this word?',
   'notebook.review.choices': 'Choices',
   'notebook.review.letters': { one: '{count} letter', other: '{count} letters' },
@@ -172,49 +174,25 @@ export default {
   'notebook.charts.heat.cellStarted': { one: '{date}: {count} started', other: '{date}: {count} started' },
   'notebook.charts.heat.labelSaved': 'Words saved per day',
   'notebook.charts.heat.labelStarted': 'Words started per day',
+  'notebook.charts.heat.cellAnswered': { one: '{date}: {count} answer', other: '{date}: {count} answers' },
+  'notebook.charts.heat.labelAnswered': 'Answers per day',
   /** The heatmap legend's top value. */
   'notebook.charts.heat.perDay': '{count} a day',
   /** After the first chips of a list of words. */
   'notebook.charts.moreWords': { one: '+{count} more', other: '+{count} more' },
-  /** The three moments the memory strip shows, without any review until then. */
-  'notebook.charts.memory.today': 'Today',
   'notebook.charts.memory.inWeek': 'In a week',
   'notebook.charts.memory.inMonth': 'In a month',
   /** Caption over the predicted number of words remembered. */
   'notebook.charts.memory.remembered': 'Remembered',
-  'notebook.charts.memory.rememberedWeek': 'Remembered in a week',
-  'notebook.charts.memory.rememberedMonth': 'Remembered in a month',
-  'notebook.charts.memory.ofWords': { one: 'of {count} word', other: 'of {count} words' },
-  /** Words below the target recall; the number is set in bold. */
-  'notebook.charts.memory.due': { one: '{count} due', other: '{count} due' },
-  /** Words fewer than today; the number is set in bold. */
-  'notebook.charts.memory.fewer': { one: '{count} fewer than today', other: '{count} fewer than today' },
-  /** {word} is the word and {percent} its chance of recall. */
-  'notebook.charts.memory.recallToday': '{word} {percent} recall today',
-  'notebook.charts.memory.recallWeek': '{word} {percent} recall in a week',
-  'notebook.charts.memory.recallMonth': '{word} {percent} recall in a month',
-  'notebook.charts.memory.reviewed': 'Reviewed {day}',
-  'notebook.charts.memory.dueOn': 'Due {day}',
-  'notebook.charts.memory.dueSince': 'Due since {day}',
   /** The weakest words, listed first. */
   'notebook.charts.memory.fadingFirst': 'Fading first',
   'notebook.charts.memory.withoutReview': 'Without review',
-  'notebook.charts.memory.chartLabel': 'Your words by chance of recall',
-  /** The zone left of the target line on the memory strip. */
-  'notebook.charts.memory.zoneDue': 'Due',
-  /** The zone right of the target line: words still held. */
-  'notebook.charts.memory.zoneHeld': 'Held',
-  'notebook.charts.memory.axis': 'Chance of recall',
 
   // Learn: the Progress page (learn-progress.ts)
   /** Skills a question tests. */
   'notebook.learn.skill.meaning': 'Meaning',
   'notebook.learn.skill.spelling': 'Spelling',
   'notebook.learn.skill.listening': 'Listening',
-  /** Questions of each skill on one day. */
-  'notebook.learn.skillCount.meaning': { one: '{count} meaning', other: '{count} meaning' },
-  'notebook.learn.skillCount.spelling': { one: '{count} spelling', other: '{count} spelling' },
-  'notebook.learn.skillCount.listening': { one: '{count} listening', other: '{count} listening' },
   /** {percent} is in bold: the skill's share of the last week's questions. */
   'notebook.learn.mix.meaning': '{percent} meaning',
   'notebook.learn.mix.spelling': '{percent} spelling',
@@ -228,29 +206,32 @@ export default {
   'notebook.learn.valueOf': '{value} of {total}',
   'notebook.learn.gauge.newWords': 'New words',
   'notebook.learn.gauge.reviews': 'Reviews',
-  /** Share of today's answers that were right. */
-  'notebook.learn.gauge.right': 'Right',
   /** Days in a row with study. */
   'notebook.learn.streak': 'Day streak',
   'notebook.learn.bestStreak': 'Best {count}',
+  'notebook.learn.hero.answers': 'Answers today',
+  'notebook.learn.hero.right': '{percent} right',
+  'notebook.learn.hero.none': 'Nothing answered yet today',
+  'notebook.learn.reviewsLeft': { one: '{count} left', other: '{count} left' },
+  'notebook.learn.goalMet': '{value} · goal {total}',
+  'notebook.learn.knownThisWeek': { one: '+{count} this week', other: '+{count} this week' },
+  'notebook.learn.week.studied': '{day}: studied',
+  'notebook.learn.week.missed': '{day}: no study',
+  'notebook.learn.growth.started': 'Started',
+  'notebook.learn.learned': 'Learned',
+  'notebook.learn.growth.aria': '{learned} learned and {started} started, since {from}',
+  'notebook.learn.curve.aria': 'Without review: {week} in a week, {month} in a month',
+  'notebook.learn.retention.label': 'Right in reviews',
+  'notebook.learn.retention.sub': 'Last 30 days · aim {percent}',
+  'notebook.learn.answers.dayCount': { one: '{count} answer', other: '{count} answers' },
+  'notebook.learn.days.summary': { one: '{count} day studied in 26 weeks', other: '{count} days studied in 26 weeks' },
+  'notebook.learn.section.days': 'Study days',
+  'notebook.learn.section.books': 'Lists',
   'notebook.learn.dueIn7Days': 'Due in 7 days',
   /** Under the number of mature words. */
   'notebook.learn.ofStarted': 'of {count} started',
-  'notebook.learn.answers.in30Days': 'Answers in 30 days',
-  /** {percent} is in bold; {count} is the number of days with answers. */
-  'notebook.learn.answers.rightOnDays': { one: '{percent} right · {count} day', other: '{percent} right · {count} days' },
-  'notebook.learn.answers.rightWrong': '{right} right, {wrong} wrong',
-  'notebook.learn.answers.dayAria': '{day}: {detail}',
-  'notebook.learn.answers.dayHead': { one: '{count} answer, {percent} right', other: '{count} answers, {percent} right' },
-  'notebook.learn.answers.minutes': { one: '{count} min', other: '{count} min' },
   'notebook.learn.answers.none': 'no answers',
-  'notebook.learn.answers.yLabel': 'Answers',
-  /** Chart legend: right answers. */
-  'notebook.learn.answers.right': 'Right',
-  /** Chart legend: wrong answers. */
-  'notebook.learn.answers.wrong': 'Wrong',
   'notebook.learn.strength.aria': { one: '{stage}: {count} word', other: '{stage}: {count} words' },
-  'notebook.learn.strength.yLabel': 'Words',
   'notebook.learn.mastered': '{value} of {total} mastered',
   'notebook.learn.known': '{value} of {total} known',
   'notebook.learn.lists.elsewhere': { one: '{count} started elsewhere', other: '{count} started elsewhere' },
@@ -267,16 +248,12 @@ export default {
   'notebook.learn.none.started': 'No words started yet',
   'notebook.learn.none.answers': 'No answers yet',
   'notebook.learn.none.trouble': 'No trouble words',
-  'notebook.learn.none.families': 'No root families yet',
   'notebook.learn.section.memory': 'Memory',
   'notebook.learn.section.ahead': 'Reviews ahead',
-  'notebook.learn.section.held': 'How long words are held',
-  'notebook.learn.section.answers': 'Answers per day',
   'notebook.learn.section.skills': 'Skills',
   /** Section of the word lists (My words and the word books). */
   'notebook.learn.section.lists': 'Words',
   'notebook.learn.section.trouble': 'Trouble words',
-  'notebook.learn.section.families': 'Root families',
 
   // Learn: the list switcher and the page switcher (learn-view.ts)
   'notebook.learn.scope.label': 'Study list',

@@ -1,20 +1,18 @@
 /**
- * The Learn tab's Progress page: today against the daily goals and the streak, your memory of the
- * words today and after a week or a month without review (FSRS's predicted recall, one dot per
- * word), the reviews ahead, answers per day, how firmly the words are held, the skills and the mix
- * of question kinds, each list with what it shares with the others, trouble words and root families.
+ * The Learn tab's Progress page: today against the daily goals with the week's study days, the
+ * words learned and how that has grown, memory now and without review (FSRS's predicted recall), the
+ * reviews ahead, a half-year of study days, the skills and the mix of question kinds, trouble words,
+ * and each list with what it shares with the others.
  *
  * Everything comes from the answer history (answer-history.ts) and the words' FSRS state. The
  * charts take a pointer, a tap or the keyboard (`learn-charts.ts`).
  */
-import { DAY, clean, dayStart, esc, type Family, type NotebookEntry } from './notebook-shared';
-import { analyzeNotebook } from './notebook-views';
-import { deepRootFamilies } from './notebook-families';
-import { predictedRecall } from './review-schedule';
+import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
+import { predictedRecall, scheduleReview, type ScheduleFields } from './review-schedule';
 import { SKILLS, historyByWord, skillMastery, type AnswerRecord, type Skill } from './answer-history';
 import { bookEntry, bookProgress, learnScopeEntries, wordStatus, wordbookMeta, type WordsContext, type WordsEntry, type WordsScope } from './wordbooks';
 import { isLearnable, LEECH_LAPSES, MATURITY_NAME, memoryLevel, wordMaturity, type Maturity } from './review-quiz';
-import { barChartHtml, dayLabel, memoryHtml, wordChips, type BarDatum, type RetentionWord } from './learn-charts';
+import { dayLabel, heatmapHtml, niceTicks, retentionAt, wordChips, type HeatCell, type RetentionWord } from './learn-charts';
 import { forecastChartHtml } from './notebook-review';
 import { formatDate, formatList, formatNumber, formatPercent, rawHtml, t, tHtml, type MessageKey } from './i18n/runtime';
 
@@ -54,8 +52,19 @@ export interface ProgressSummary {
   skills: Record<Skill, { mastered: number; tested: number }>;
   /** Questions per skill over the last 7 days. */
   mix: Record<Skill, number>;
-  /** Root families, largest first, with how many of their words are known or being learned. */
-  families: Array<{ label: string; gloss: string; size: number; known: number; learning: number }>;
+  /**
+   * Words of the list started (answered or marked known), and learned: past their first steps
+   * (tagged Young or Mature, `wordMaturity`) or marked known, the count Anki and WaniKani lead with.
+   */
+  startedCount: number;
+  learnedCount: number;
+  /**
+   * Words started and words learned at the end of each day since the first answer, oldest first:
+   * two weeks at least, ninety days at most.
+   */
+  growth: Array<{ day: number; started: number; learned: number }>;
+  /** Answers to words already started over the last 30 days, and how many were right (Anki's true retention). */
+  retention: { right: number; total: number };
   /** Graded answers per day over the last 30 days, oldest first. */
   perDay: Array<{ day: number; right: number; wrong: number; ms: number; words: string[]; skills: Record<Skill, number> }>;
   /** Average predicted recall over the words in rotation, for each of the next 30 days (day 0 is now). */
@@ -73,12 +82,6 @@ const SKILL_KEY: Record<Skill, MessageKey> = {
   meaning: 'notebook.learn.skill.meaning',
   spelling: 'notebook.learn.skill.spelling',
   listening: 'notebook.learn.skill.listening',
-};
-/** "12 meaning", "3 listening": a skill's number of questions. */
-const SKILL_COUNT_KEY: Record<Skill, MessageKey> = {
-  meaning: 'notebook.learn.skillCount.meaning',
-  spelling: 'notebook.learn.skillCount.spelling',
-  listening: 'notebook.learn.skillCount.listening',
 };
 /** "40% meaning": a skill's share of the week's questions. */
 const MIX_KEY: Record<Skill, MessageKey> = {
@@ -222,31 +225,6 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
   const mix = Object.fromEntries(SKILLS.map((k) => [k, 0])) as Record<Skill, number>;
   for (const r of graded) if (r.answeredAt >= today - 6 * DAY && r.skill) mix[r.skill] += 1;
 
-  // Root families among the words started or saved (a book of thousands would bury them in new words).
-  const studied = words.filter((e) => e.saved || wordStatus(e) !== 'new');
-  const analysis = analyzeNotebook(studied);
-  const fams = new Map<string, Family>();
-  for (const f of [...analysis.families.filter((f) => f.kind === 'root'), ...deepRootFamilies(analysis)]) {
-    const k = f.label.toLowerCase();
-    const prev = fams.get(k);
-    if (!prev || f.ids.length > prev.ids.length) fams.set(k, f);
-  }
-  const byId = new Map(studied.map((e) => [e.id, e]));
-  const families = [...fams.values()]
-    .sort((a, b) => b.ids.length - a.ids.length || a.label.localeCompare(b.label))
-    .slice(0, 8)
-    .map((f) => {
-      let known = 0;
-      let learning = 0;
-      for (const id of f.ids) {
-        const e = byId.get(id);
-        const st = e ? wordStatus(e) : 'new';
-        if (st === 'known') known += 1;
-        else if (st === 'learning') learning += 1;
-      }
-      return { label: f.label, gloss: f.gloss, size: f.ids.length, known, learning };
-    });
-
   // Answers per day.
   const perDay: ProgressSummary['perDay'] = [];
   const index = new Map<number, ProgressSummary['perDay'][number]>();
@@ -292,6 +270,26 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
   }
   trouble.sort((a, b) => Number(b.leech) - Number(a.leech) || b.misses / b.answers - a.misses / a.answers || b.lastMiss - a.lastMiss);
 
+  // Growth over 90 days, and the share of reviews right over 30, from this list's answers.
+  const first = history.reduce((m, r) => Math.min(m, r.answeredAt), today);
+  const growth = growthOver(history, today, Math.min(90, Math.max(14, Math.round((today - dayStart(first)) / DAY) + 1)));
+  let reviewed = 0;
+  let reviewedRight = 0;
+  for (const list of byWord.values()) {
+    list.forEach((r, i) => {
+      if ((i > 0 || r.prior) && r.answeredAt >= today - 29 * DAY) {
+        reviewed += 1;
+        if (r.correct) reviewedRight += 1;
+      }
+    });
+  }
+  const statuses = words.map((e) => wordStatus(e));
+  // The chart ends on today's counts, so its last point reads as the "Known" figure beside it
+  // (words started before their answers were kept have no history to replay).
+  const startedCount = statuses.filter((st) => st !== 'new').length;
+  const learnedCount = words.filter((e) => e.known || isLearned(e)).length;
+  if (growth.length) growth[growth.length - 1] = { ...growth[growth.length - 1], started: startedCount, learned: learnedCount };
+
   return {
     newToday,
     newGoal,
@@ -304,7 +302,10 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
     overlaps,
     skills,
     mix,
-    families,
+    startedCount,
+    learnedCount,
+    growth,
+    retention: { right: reviewedRight, total: reviewed },
     perDay,
     curve,
     inRotation: inRot.length,
@@ -316,94 +317,151 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
 
 /* ------------------------------------------------------------------- pieces */
 
-/** A thin rule that fills towards a target, with its count (or `shown` in its place); teal when the target is met. */
-function gauge(label: string, value: number, target: number, shown = ''): string {
+/** Past its first steps: the stage tag says Young or Mature. */
+function isLearned(e: NotebookEntry): boolean {
+  const m = wordMaturity(e);
+  return m === 'young' || m === 'mature';
+}
+
+/** Words started and words learned at the end of each of the last `days` days, oldest first. */
+function growthOver(history: AnswerRecord[], today: number, days: number): ProgressSummary['growth'] {
+  const learned = (f: ScheduleFields) => isLearned(f as NotebookEntry);
+  const words: Array<{ start: number; marks: Array<[number, boolean]> }> = [];
+  for (const list of historyByWord(history).values()) {
+    let fields: ScheduleFields = {};
+    let start: number | null = null;
+    let marked = false;
+    const marks: Array<[number, boolean]> = [];
+    for (const r of list) {
+      if (r.kind === 'known') {
+        marked = r.correct;
+        if (start == null && marked) start = r.answeredAt;
+        marks.push([r.answeredAt, marked || learned(fields)]);
+        continue;
+      }
+      if (r.grade == null) continue;
+      if (start == null) start = r.answeredAt;
+      if (!marks.length && r.prior) fields = { ...r.prior };
+      fields = { ...fields, ...scheduleReview(fields, r.grade, r.answeredAt) };
+      marks.push([r.answeredAt, marked || learned(fields)]);
+    }
+    if (start != null) words.push({ start, marks });
+  }
+  const out: ProgressSummary['growth'] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = dayStart(today - i * DAY + DAY / 2);
+    const end = day + DAY;
+    let started = 0;
+    let held = 0;
+    for (const w of words) {
+      if (w.start >= end) continue;
+      started += 1;
+      let last = false;
+      for (const [at, k] of w.marks) {
+        if (at >= end) break;
+        last = k;
+      }
+      if (last) held += 1;
+    }
+    out.push({ day, started, learned: held });
+  }
+  return out;
+}
+
+/** A labelled bar that fills towards a target: teal once it is met, with `shown` beside it and `spoken` read out. */
+function meter(label: string, value: number, target: number, shown: string, spoken: string): string {
   const share = target ? Math.min(1, value / target) : value ? 1 : 0;
-  const spoken = shown || t('notebook.learn.valueOf', { value, total: target });
-  return `<div class="lrp-gauge${share >= 1 ? ' is-done' : ''}" role="img" aria-label="${tHtml('notebook.learn.gaugeAria', { label, value: spoken })}">
-    <span class="lrp-gauge__label">${esc(label)}</span>
-    <span class="lrp-gauge__n">${shown ? `<b>${esc(shown)}</b>` : tHtml('notebook.learn.valueOf', { value: bold(fmt(value)), total: target })}</span>
-    <span class="lrp-gauge__bar"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
+  return `<div class="lp-meter${share >= 1 && value ? ' is-done' : ''}" role="img" aria-label="${tHtml('notebook.learn.gaugeAria', { label, value: spoken })}">
+    <span class="lp-meter__label">${esc(label)}</span>
+    <span class="lp-meter__n">${shown}</span>
+    <span class="lp-meter__bar"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
   </div>`;
 }
 
-function stackBar(known: number, learning: number, total: number, label: string): string {
-  const k = total ? (known / total) * 100 : 0;
-  const l = total ? (learning / total) * 100 : 0;
-  return `<span class="wb-bar lrp-bar" role="img" aria-label="${esc(label)}"><i class="wb-bar__known" style="width:${k.toFixed(2)}%"></i><i class="wb-bar__learning" style="width:${l.toFixed(2)}%"></i></span>`;
+/** A section: a short heading, then its body. */
+function section(cls: string, label: string, body: string): string {
+  return `<section class="lp-sec ${cls}" aria-label="${esc(label)}"><h3 class="lp-h">${esc(label)}</h3>${body}</section>`;
 }
 
-/** A section: a numbered label on a rule, then its body. */
-function section(cls: string, n: number, label: string, body: string): string {
-  return `<section class="lrp-sec ${cls}" aria-label="${esc(label)}"><h3 class="lrp-sec__label"><span>${String(n).padStart(2, '0')}</span>${esc(label)}</h3>${body}</section>`;
+/** A number with its label and one line of context under it. */
+function stat(n: string, label: string, sub = '', cls = ''): string {
+  return `<div class="lp-stat${cls ? ` ${cls}` : ''}"><b class="lp-stat__n">${n}</b><span class="lp-stat__label">${esc(label)}</span>${sub ? `<span class="lp-stat__sub">${sub}</span>` : ''}</div>`;
+}
+
+/** The last seven days ending today, each a dot filled when it had answers. */
+function weekRow(days: Set<number>, today: number): string {
+  const cells: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const day = dayStart(today - i * DAY + DAY / 2);
+    const on = days.has(day);
+    const name = formatDate(day, { weekday: 'narrow' });
+    const spoken = t(on ? 'notebook.learn.week.studied' : 'notebook.learn.week.missed', { day: dayLabel(day) });
+    cells.push(`<li class="lp-day${on ? ' is-on' : ''}${i === 0 ? ' is-today' : ''}" aria-label="${esc(spoken)}"><i></i><span>${esc(name)}</span></li>`);
+  }
+  return `<ol class="lp-week">${cells.join('')}</ol>`;
 }
 
 /**
- * An oversized number with a label that names it and, under the label, one short line of context.
- * `--ch` (the number's length) lets the CSS shrink a long number to its column instead of overflowing.
+ * Words started and words learned since the first answer as two filled lines, learned in teal over
+ * started in its tint, scaled to the started total; the axis carries the top count and the two
+ * ends' dates.
  */
-function figure(n: string, label: string, sub = '', cls = ''): string {
-  return `<div class="lrp-fig${cls ? ` ${cls}` : ''}"><b class="lrp-fig__n" style="--ch:${n.length}">${n}</b><p class="lrp-fig__cap"><span class="lrp-fig__label">${esc(label)}</span>${sub ? `<span class="lrp-fig__sub">${sub}</span>` : ''}</p></div>`;
+function growthChart(growth: ProgressSummary['growth']): string {
+  const n = growth.length;
+  const top = niceTicks(Math.max(1, ...growth.map((g) => g.started))).slice(-1)[0] || 1;
+  const W = 600;
+  const H = 140;
+  const x = (i: number) => (n > 1 ? (i / (n - 1)) * W : W);
+  const y = (v: number) => H - (v / top) * H;
+  const line = (pick: (g: ProgressSummary['growth'][number]) => number) => growth.map((g, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(pick(g)).toFixed(1)}`).join('');
+  const area = (pick: (g: ProgressSummary['growth'][number]) => number) => `${line(pick)}L${W},${H}L0,${H}Z`;
+  const last = growth[n - 1];
+  const first = growth[0];
+  const spoken = t('notebook.learn.growth.aria', { learned: last.learned, started: last.started, from: dayLabel(first.day) });
+  return `<figure class="lp-growth" role="img" aria-label="${esc(spoken)}">
+    <div class="lp-plot">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <line class="lp-grid" x1="0" y1="0.5" x2="${W}" y2="0.5" vector-effect="non-scaling-stroke"/>
+        <path class="lp-area lp-area--started" d="${area((g) => g.started)}"/>
+        <path class="lp-area lp-area--known" d="${area((g) => g.learned)}"/>
+        <path class="lp-line lp-line--started" d="${line((g) => g.started)}" vector-effect="non-scaling-stroke"/>
+        <path class="lp-line lp-line--known" d="${line((g) => g.learned)}" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <span class="lp-axis lp-axis--top">${esc(fmt(top))}</span>
+    </div>
+    <figcaption class="lp-xaxis"><span>${esc(formatDate(first.day, { month: 'short', day: 'numeric' }))}</span><span>${tHtml('notebook.learn.today')}</span></figcaption>
+    <p class="lp-legend"><span><i class="lp-key lp-key--known"></i>${tHtml('notebook.learn.learned')} <b>${esc(fmt(last.learned))}</b></span><span><i class="lp-key lp-key--started"></i>${tHtml('notebook.learn.growth.started')} <b>${esc(fmt(last.started))}</b></span></p>
+  </figure>`;
 }
 
-function perDayChart(perDay: ProgressSummary['perDay']): string {
-  const data: BarDatum[] = perDay.map((d, i) => {
-    const n = d.right + d.wrong;
-    const date = new Date(d.day);
-    const last = i === perDay.length - 1;
-    const mins = d.ms / 60000;
-    const mix = SKILLS.filter((k) => d.skills[k]).map((k) => t(SKILL_COUNT_KEY[k], { count: d.skills[k] }));
-    const rightWrong = t('notebook.learn.answers.rightWrong', { right: d.right, wrong: d.wrong });
-    const minutes = mins >= 0.5 ? ` · ${tHtml('notebook.learn.answers.minutes', { count: Math.round(mins) })}` : '';
-    return {
-      tick: last ? t('notebook.learn.today') : date.getDay() === 1 && i < perDay.length - 3 ? String(date.getDate()) : '',
-      sub: !last && date.getDay() === 1 && i < perDay.length - 3 ? formatDate(date, { month: 'short' }) : '',
-      segments: [
-        { cls: 'right', value: d.right },
-        { cls: 'wrong', value: d.wrong },
-      ],
-      mark: last,
-      aria: t('notebook.learn.answers.dayAria', { day: dayLabel(d.day), detail: rightWrong }),
-      detail: n
-        ? `<p class="lrc-read__head"><b>${esc(dayLabel(d.day))}</b> · ${tHtml('notebook.learn.answers.dayHead', { count: n, percent: formatPercent(pct(d.right, n) / 100) })}${minutes}</p><p class="lrc-read__sub">${esc(rightWrong)}${mix.length ? ` · ${esc(formatList(mix, 'unit'))}` : ''}</p>${wordChips(d.words, 18)}`
-        : `<p class="lrc-read__head"><b>${esc(dayLabel(d.day))}</b> · ${tHtml('notebook.learn.answers.none')}</p>`,
-    };
-  });
-  return barChartHtml({
-    id: 'answers',
-    data,
-    yLabel: t('notebook.learn.answers.yLabel'),
-    summary: '',
-    legend: [
-      { cls: 'right', name: t('notebook.learn.answers.right') },
-      { cls: 'wrong', name: t('notebook.learn.answers.wrong') },
-    ],
-    height: 150,
-  });
-}
-
-function strengthChart(strength: ProgressSummary['strength']): string {
-  const total = strength.reduce((s, b) => s + b.words.length, 0);
-  const data: BarDatum[] = strength.map((b, i) => ({
-    tick: b.label,
-    segments: [{ cls: STAGES[i], value: b.words.length }],
-    aria: t('notebook.learn.strength.aria', { stage: b.label, count: b.words.length }),
-    detail: `<p class="lrc-read__head"><b>${esc(b.label)}</b> · ${tHtml('notebook.words', { count: b.words.length })}${total ? ` (${formatPercent(pct(b.words.length, total) / 100)})` : ''}</p>${wordChips(b.words, 30)}`,
-  }));
-  return barChartHtml({ id: 'strength', data, yLabel: t('notebook.learn.strength.yLabel'), summary: '', height: 150 });
-}
-
-function mixHtml(mix: Record<Skill, number>): string {
-  const total = SKILLS.reduce((s, k) => s + mix[k], 0);
-  if (!total) return '';
-  const share = (k: Skill) => formatPercent(pct(mix[k], total) / 100);
-  const seg = SKILLS.map((k) => `<i class="lrp-mix--${k}" style="flex:${mix[k] || 0.0001}" title="${tHtml('notebook.learn.gaugeAria', { label: skillLabel(k), value: mix[k] })}"></i>`).join('');
-  const parts = SKILLS.map((k) => `<span class="lrp-mix__k"><i class="lrp-mix--${k}"></i>${tHtml(MIX_KEY[k], { percent: bold(share(k)) })}</span>`);
-  const spoken = formatList(SKILLS.map((k) => t('notebook.learn.mix.shareAria', { skill: skillLabel(k), percent: share(k) })), 'unit');
-  return `<div class="lrp-mix">
-    <div class="lrp-mix__bar" role="img" aria-label="${esc(spoken)}">${seg}</div>
-    <p class="lrp-mix__text"><span class="lrp-mix__head">${tHtml('notebook.learn.mix.head', { count: total })}</span>${parts.join('')}</p>
-  </div>`;
+/**
+ * The words' average chance of recall over the next 30 days if none is reviewed, from 50% up, with
+ * the 90% the schedule aims at dashed and the values a week and a month on under it.
+ */
+function curveChart(curve: number[]): string {
+  const W = 600;
+  const H = 110;
+  const floor = 0.5;
+  const x = (d: number) => (d / 30) * W;
+  const y = (p: number) => H - ((Math.max(floor, p) - floor) / (1 - floor)) * H;
+  const d = curve.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p).toFixed(1)}`).join('');
+  const at = (days: number) => formatPercent(Math.round((curve[days] ?? 0) * 100) / 100);
+  return `<figure class="lp-curve" role="img" aria-label="${tHtml('notebook.learn.curve.aria', { week: at(7), month: at(30) })}">
+    <div class="lp-plot">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <line class="lp-aim" x1="0" y1="${y(0.9).toFixed(1)}" x2="${W}" y2="${y(0.9).toFixed(1)}" vector-effect="non-scaling-stroke"/>
+        <path class="lp-area lp-area--recall" d="${d}L${W},${H}L0,${H}Z"/>
+        <path class="lp-line lp-line--recall" d="${d}" vector-effect="non-scaling-stroke"/>
+        <line class="lp-tick" x1="${x(7)}" y1="0" x2="${x(7)}" y2="${H}" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <span class="lp-axis lp-axis--aim" style="top:${((y(0.9) / H) * 100).toFixed(1)}%">${esc(formatPercent(0.9))}</span>
+    </div>
+    <figcaption class="lp-curve__marks">
+      <span class="lp-curve__head">${tHtml('notebook.charts.memory.withoutReview')}</span>
+      <span>${tHtml('notebook.charts.memory.inWeek')} <b>${esc(at(7))}</b></span>
+      <span>${tHtml('notebook.charts.memory.inMonth')} <b>${esc(at(30))}</b></span>
+    </figcaption>
+  </figure>`;
 }
 
 /** Reviews due within `days` days from today, overdue ones included (as on the forecast chart). */
@@ -412,122 +470,171 @@ function dueWithin(words: WordsEntry[], now: number, days: number): number {
   return words.filter((e) => e.reviewDue != null && memoryLevel(e) > 0 && !e.known && Number(e.reviewDue) < end).length;
 }
 
+function mixHtml(mix: Record<Skill, number>): string {
+  const total = SKILLS.reduce((s, k) => s + mix[k], 0);
+  if (!total) return '';
+  const share = (k: Skill) => formatPercent(pct(mix[k], total) / 100);
+  const seg = SKILLS.map((k) => `<i class="lp-mix--${k}" style="flex:${mix[k] || 0.0001}"></i>`).join('');
+  const parts = SKILLS.map((k) => `<span><i class="lp-mix--${k}"></i>${tHtml(MIX_KEY[k], { percent: bold(share(k)) })}</span>`);
+  const spoken = formatList(SKILLS.map((k) => t('notebook.learn.mix.shareAria', { skill: skillLabel(k), percent: share(k) })), 'unit');
+  return `<div class="lp-mix">
+    <p class="lp-mix__head">${tHtml('notebook.learn.mix.head', { count: total })}</p>
+    <div class="lp-mix__bar" role="img" aria-label="${esc(spoken)}">${seg}</div>
+    <p class="lp-mix__key">${parts.join('')}</p>
+  </div>`;
+}
+
 /* --------------------------------------------------------------------- page */
 
+const STAGE_CLS = ['new', 'learning', 'young', 'mature'];
+
 /**
- * The page reads like a printed spread rather than a grid of cards: a masthead with the streak as
- * a giant numeral beside today's gauges, then numbered sections on rules, each led by one oversized
- * number with a short label, at sizes that differ from section to section. Every number sits below
- * its rule and beside its label, never across them. Wide windows set the sections on a
- * twelve-column grid in uneven pairs; a phone stacks them.
+ * One column that answers what a learner opens Progress to ask, in that order: is today done, how
+ * many words do I know and is that growing, how well do I remember them, what is coming, how often
+ * do I study, and where am I weak. It follows what the established study apps show (Anki's
+ * heatmap, future due and true retention; WaniKani's stage counts; Duolingo's week of streak dots;
+ * 墨墨背单词's memory curve), each part on a plain panel with a short heading. Each number sits
+ * beside the label that names it.
  */
 export function progressHtml(input: ProgressInput): string {
   const now = input.now ?? Date.now();
   const s = progressSummary(input);
   const words = scopeWords(input);
-  const due = s.reviewsToday + s.dueLeft;
+  const today = dayStart(now);
   const date = formatDate(now, { weekday: 'long', day: 'numeric', month: 'long' });
 
-  const streak = fmt(s.streak);
-  const mast = `<header class="lrp-mast${s.streak ? ' is-on' : ''}" aria-label="${tHtml('notebook.learn.today')}">
-    <p class="lrp-kicker">${esc(date)}</p>
-    <div class="lrp-mast__streak">
-      <b class="lrp-giant" style="--ch:${streak.length}">${streak}</b>
-      <p class="lrp-fig__cap"><span class="lrp-fig__label">${tHtml('notebook.learn.streak')}</span><span class="lrp-fig__sub">${tHtml('notebook.learn.bestStreak', { count: s.bestStreak })}</span></p>
+  // Today: the answers given, then the two things the day asks for, then the week.
+  const due = s.reviewsToday + s.dueLeft;
+  const answered = s.reviewsToday
+    ? `${stat(esc(fmt(s.reviewsToday)), t('notebook.learn.hero.answers'), tHtml('notebook.learn.hero.right', { percent: bold(esc(formatPercent(pct(s.correctToday, s.reviewsToday) / 100))) }), 'is-hero')}`
+    : `<p class="lp-quiet">${tHtml('notebook.learn.hero.none')}</p>`;
+  const reviewsShown = s.dueLeft ? `${tHtml('notebook.learn.valueOf', { value: bold(fmt(s.reviewsToday)), total: due })} · ${tHtml('notebook.learn.reviewsLeft', { count: s.dueLeft })}` : tHtml('notebook.learn.valueOf', { value: bold(fmt(s.reviewsToday)), total: due });
+  const newShown = s.newGoal && s.newToday >= s.newGoal
+    ? tHtml('notebook.learn.goalMet', { value: bold(fmt(s.newToday)), total: s.newGoal })
+    : tHtml('notebook.learn.valueOf', { value: bold(fmt(s.newToday)), total: s.newGoal });
+  const studyDays = new Set(input.history.map((r) => dayStart(r.answeredAt)));
+  const todayPanel = `<section class="lp-sec lp-today" aria-label="${tHtml('notebook.learn.today')}">
+    <h3 class="lp-h">${tHtml('notebook.learn.today')}<span class="lp-h__date">${esc(date)}</span></h3>
+    <div class="lp-today__grid">
+      <div class="lp-today__main">${answered}</div>
+      <div class="lp-meters">${meter(t('notebook.learn.gauge.reviews'), s.reviewsToday, due, reviewsShown, t('notebook.learn.valueOf', { value: s.reviewsToday, total: due }))}${meter(
+        t('notebook.learn.gauge.newWords'),
+        s.newToday,
+        s.newGoal,
+        newShown,
+        t(s.newGoal && s.newToday >= s.newGoal ? 'notebook.learn.goalMet' : 'notebook.learn.valueOf', { value: s.newToday, total: s.newGoal }),
+      )}</div>
     </div>
-    <div class="lrp-gauges">${gauge(t('notebook.learn.gauge.newWords'), s.newToday, s.newGoal)}${gauge(t('notebook.learn.gauge.reviews'), s.reviewsToday, due)}${
-      s.reviewsToday ? gauge(t('notebook.learn.gauge.right'), s.correctToday, s.reviewsToday, formatPercent(pct(s.correctToday, s.reviewsToday) / 100)) : ''
-    }</div>
-  </header>`;
+    <div class="lp-streak">${weekRow(studyDays, today)}<p class="lp-streak__text"><b>${esc(fmt(s.streak))}</b> ${tHtml('notebook.learn.streak')}<span>${tHtml('notebook.learn.bestStreak', { count: s.bestStreak })}</span></p></div>
+  </section>`;
 
-  const memory = s.inRotation ? memoryHtml({ id: 'memory', words: s.rotation, now }) : `<p class="lrp-none">${tHtml('notebook.learn.none.rotation')}</p>`;
+  // Words: how many are learned, how many came this week, and every word by stage.
+  const total = s.strength.reduce((n, b) => n + b.words.length, 0);
+  const started = s.startedCount;
+  const learned = s.learnedCount;
+  const learnedWeek = (s.growth[s.growth.length - 1]?.learned ?? 0) - (s.growth[s.growth.length - 8]?.learned ?? 0);
+  const stageBar = total
+    ? `<div class="lp-stages" role="img" aria-label="${esc(formatList(s.strength.map((b) => t('notebook.learn.strength.aria', { stage: b.label, count: b.words.length })), 'unit'))}">${s.strength
+        .map((b, i) => (b.words.length ? `<i class="lp-stage--${STAGE_CLS[i]}" style="flex:${b.words.length}"></i>` : ''))
+        .join('')}</div>
+      <div class="lp-stage-key">${s.strength
+        .map((b, i) =>
+          b.words.length
+            ? `<details class="lp-stage"><summary><i class="lp-stage--${STAGE_CLS[i]}"></i>${esc(b.label)} <b>${esc(fmt(b.words.length))}</b></summary>${wordChips(b.words, 40)}</details>`
+            : `<span class="lp-stage is-empty"><i class="lp-stage--${STAGE_CLS[i]}"></i>${esc(b.label)} <b>0</b></span>`,
+        )
+        .join('')}</div>`
+    : '';
+  const wordsBody = started
+    ? `<div class="lp-row">${stat(esc(fmt(learned)), t('notebook.learn.learned'), `${tHtml('notebook.learn.ofStarted', { count: started })}${learnedWeek > 0 ? ` · <span class="lp-up">${tHtml('notebook.learn.knownThisWeek', { count: learnedWeek })}</span>` : ''}`, 'is-teal')}</div>${stageBar}${growthChart(s.growth)}`
+    : `${stageBar}<p class="lp-quiet">${tHtml('notebook.learn.none.started')}</p>`;
 
+  // Memory: the share remembered now, the share of reviews right, the curve without review, the weakest words.
+  const rememberedNow = s.inRotation ? s.curve[0] : 0;
+  const fading = s.inRotation ? retentionAt(s.rotation, now, 0, 8).weakest.filter((w) => w.recall < 0.97) : [];
+  const fadingChips = fading.length
+    ? `<div class="lp-fading"><p class="lp-sub">${tHtml('notebook.charts.memory.fadingFirst')}</p><div class="lrc-chips">${fading
+        .map((w) => `<button type="button" class="lrc-chip lp-fade" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)} <small>${esc(formatPercent(Math.round(w.recall * 100) / 100))}</small></button>`)
+        .join('')}</div></div>`
+    : '';
+  const retention = s.retention.total
+    ? stat(esc(formatPercent(pct(s.retention.right, s.retention.total) / 100)), t('notebook.learn.retention.label'), tHtml('notebook.learn.retention.sub', { percent: formatPercent(0.9) }), pct(s.retention.right, s.retention.total) >= 90 ? 'is-teal' : 'is-ember')
+    : '';
+  const remembered = Math.round(rememberedNow * s.inRotation);
+  const memoryBody = s.inRotation
+    ? `<div class="lp-row">${stat(esc(formatPercent(Math.round(rememberedNow * 100) / 100)), t('notebook.charts.memory.remembered'), tHtml('notebook.learn.valueOf', { value: bold(fmt(remembered)), total: s.inRotation }), 'is-teal')}${retention}</div>${curveChart(s.curve)}${fadingChips}`
+    : `<p class="lp-quiet">${tHtml('notebook.learn.none.rotation')}</p>`;
+
+  // Reviews ahead: the next two weeks.
   const week = dueWithin(words, now, 7);
-  const ahead = `${figure(fmt(week), t('notebook.learn.dueIn7Days'))}${forecastChartHtml(words, now, 30, 'due30')}`;
+  const ahead = `<div class="lp-row">${stat(esc(fmt(week)), t('notebook.learn.dueIn7Days'))}</div>${forecastChartHtml(words, now, 14, 'due14')}`;
 
-  const started = s.strength.slice(1).reduce((n, b) => n + b.words.length, 0);
-  const held = s.strength[3].words.length;
-  const heldBody = started
-    ? `${figure(fmt(held), MATURITY_NAME.mature, tHtml('notebook.learn.ofStarted', { count: started }), 'is-teal')}${strengthChart(s.strength)}`
-    : `<p class="lrp-none">${tHtml('notebook.learn.none.started')}</p>`;
+  // Study days: 26 weeks of answers to this list's words, as Today counts them.
+  const cells: HeatCell[] = [];
+  const perDay = new Map<number, number>();
+  const listed = new Set(words.map((e) => key(e.lemma)));
+  for (const r of input.history) if (r.grade != null && listed.has(r.lemma)) perDay.set(dayStart(r.answeredAt), (perDay.get(dayStart(r.answeredAt)) || 0) + 1);
+  const span = 26 * 7;
+  for (let i = span - 1; i >= 0; i--) {
+    const day = dayStart(today - i * DAY + DAY / 2);
+    const count = perDay.get(day) || 0;
+    cells.push({ day, count, detail: `<p class="lrc-read__head"><b>${esc(dayLabel(day))}</b> · ${count ? tHtml('notebook.learn.answers.dayCount', { count }) : tHtml('notebook.learn.answers.none')}</p>` });
+  }
+  const studied = cells.filter((c) => c.count).length;
+  const daysBody = studied
+    ? heatmapHtml({ id: 'days', cells, noun: 'answered', summary: `<p class="lrc-read__head">${tHtml('notebook.learn.days.summary', { count: studied })}</p>` })
+    : `<p class="lp-quiet">${tHtml('notebook.learn.none.answers')}</p>`;
 
-  const answers30 = s.perDay.reduce((n, d) => n + d.right + d.wrong, 0);
-  const right30 = s.perDay.reduce((n, d) => n + d.right, 0);
-  const days30 = s.perDay.filter((d) => d.right + d.wrong).length;
-  const answersSub = tHtml('notebook.learn.answers.rightOnDays', { percent: bold(formatPercent(pct(right30, answers30) / 100)), count: days30 });
-  const answersBody = answers30
-    ? `${figure(fmt(answers30), t('notebook.learn.answers.in30Days'), answersSub, 'is-wide')}${perDayChart(s.perDay)}`
-    : `<p class="lrp-none">${tHtml('notebook.learn.none.answers')}</p>`;
-
-  const skills = `<div class="lrp-skills">${SKILLS.map((k) => {
+  // Skills: the share of tested words mastered in each, and the week's mix of questions.
+  const skills = `<div class="lp-skills">${SKILLS.map((k) => {
     const v = s.skills[k];
     const share = v.tested ? v.mastered / v.tested : 0;
-    // The percent sign is set smaller than the number, so the number and the sign come apart here.
-    const pctHtml = esc(formatPercent(pct(v.mastered, v.tested) / 100)).replace(/(\s*%\s*)/, '<small>$1</small>');
-    return `<div class="lrp-skill">
-      <span class="lrp-skill__name">${esc(skillLabel(k))}</span>
-      <b class="lrp-skill__pct">${v.tested ? pctHtml : '–'}</b>
-      <span class="lrp-skill__bar" role="img" aria-label="${tHtml('notebook.learn.mastered', { value: v.mastered, total: v.tested })}"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
-      <span class="lrp-skill__n">${tHtml('notebook.learn.mastered', { value: v.mastered, total: v.tested })}</span>
+    return `<div class="lp-skill">
+      <span class="lp-skill__name">${esc(skillLabel(k))}</span>
+      <span class="lp-skill__bar" role="img" aria-label="${tHtml('notebook.learn.mastered', { value: v.mastered, total: v.tested })}"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
+      <span class="lp-skill__n">${v.tested ? tHtml('notebook.learn.mastered', { value: bold(fmt(v.mastered)), total: v.tested }) : '–'}</span>
     </div>`;
   }).join('')}</div>${mixHtml(s.mix)}`;
 
-  const lists = `<ul class="lrp-lists">${s.lists
-    .map((l) => {
-      const o = s.overlaps[l.id];
-      const extra = [
-        o?.elsewhere ? t('notebook.learn.lists.elsewhere', { count: o.elsewhere }) : '',
-        ...(o?.shared.slice(0, 3).map((x) => t('notebook.learn.lists.shared', { count: x.shared, list: x.label })) || []),
-      ].filter(Boolean);
-      const more = [t('notebook.review.count.learning', { count: l.learning }), t('notebook.review.count.new', { count: l.fresh }), ...extra];
-      return `<li class="lrp-list">
-        <span class="lrp-list__name">${esc(l.label)}</span>
-        <span class="lrp-list__n">${tHtml('notebook.learn.known', { value: bold(fmt(l.known)), total: l.total })}</span>
-        ${stackBar(l.known, l.learning, l.total, t('notebook.learn.known', { value: l.known, total: l.total }))}
-        <span class="lrp-list__more">${more.map(esc).join(' · ')}</span>
-      </li>`;
-    })
-    .join('')}</ul>
-    <p class="lrp-key"><i class="lrp-key__known"></i>${tHtml('notebook.learn.key.known')}<i class="lrp-key__learning"></i>${esc(MATURITY_NAME.learning)}<i class="lrp-key__new"></i>${esc(MATURITY_NAME.new)}</p>`;
-
-  // Trouble words set as one run of type: the more often missed, the larger and darker the word.
-  const worst = Math.max(0.0001, ...s.trouble.map((tw) => tw.misses / Math.max(1, tw.answers)));
+  // Trouble words: the most missed first, leeches marked.
   const trouble = s.trouble.length
-    ? `<p class="lrp-trouble">${s.trouble
+    ? `<div class="lrc-chips">${s.trouble
         .map((tw) => {
-          const w = tw.misses / Math.max(1, tw.answers) / worst;
           const title = tHtml('notebook.learn.trouble.title', { misses: tw.misses, answers: tw.answers, day: dayLabel(tw.lastMiss) });
-          return `<button type="button" class="lrp-tw${tw.leech ? ' is-leech' : ''}" style="--w:${w.toFixed(2)}" data-act="lookup" data-q="${esc(tw.lemma)}" title="${title}">${esc(tw.lemma)}<sup>${tw.misses}/${tw.answers}</sup></button>`;
+          return `<button type="button" class="lrc-chip lp-tw${tw.leech ? ' is-leech' : ''}" data-act="lookup" data-q="${esc(tw.lemma)}" title="${title}">${esc(tw.lemma)} <small>${tw.misses}/${tw.answers}</small></button>`;
         })
-        .join(' ')}</p><p class="lrp-key lrp-key--trouble"><sup>${s.trouble[0].misses}/${s.trouble[0].answers}</sup>${tHtml('notebook.learn.trouble.key')}${
-        s.trouble.some((tw) => tw.leech) ? `<i class="lrp-key__leech"></i>${tHtml('notebook.learn.trouble.leech')}` : ''
-      }</p>`
-    : `<p class="lrp-none">${tHtml('notebook.learn.none.trouble')}</p>`;
+        .join('')}</div><p class="lp-sub lp-sub--key">${tHtml('notebook.learn.trouble.key')}${s.trouble.some((tw) => tw.leech) ? ` · <i class="lp-leech"></i>${tHtml('notebook.learn.trouble.leech')}` : ''}</p>`
+    : `<p class="lp-quiet">${tHtml('notebook.learn.none.trouble')}</p>`;
 
-  const biggest = Math.max(1, ...s.families.map((f) => f.size));
-  const fams = s.families.length
-    ? `<ul class="lrp-fams">${s.families
-        .map(
-          (f) => `<li class="lrp-fam" style="--s:${(f.size / biggest).toFixed(2)}">
-            <span class="lrp-fam__root">${esc(f.label)}</span>
-            ${f.gloss ? `<span class="lrp-fam__gloss">${esc(f.gloss)}</span>` : ''}
-            ${stackBar(f.known, f.learning, f.size, t('notebook.learn.known', { value: f.known, total: f.size }))}
-            <span class="lrp-fam__n">${tHtml('notebook.learn.known', { value: f.known, total: f.size })}</span>
-          </li>`,
-        )
+  // Lists, when there is more than one: each one's known, learning and new words.
+  const lists = s.lists.length > 1
+    ? `<ul class="lp-lists">${s.lists
+        .map((l) => {
+          const o = s.overlaps[l.id];
+          const extra = [
+            o?.elsewhere ? t('notebook.learn.lists.elsewhere', { count: o.elsewhere }) : '',
+            ...(o?.shared.slice(0, 2).map((x) => t('notebook.learn.lists.shared', { count: x.shared, list: x.label })) || []),
+          ].filter(Boolean);
+          const k = l.total ? (l.known / l.total) * 100 : 0;
+          const g = l.total ? (l.learning / l.total) * 100 : 0;
+          return `<li class="lp-list">
+            <span class="lp-list__name">${esc(l.label)}</span>
+            <span class="lp-list__n">${tHtml('notebook.learn.known', { value: bold(fmt(l.known)), total: l.total })}</span>
+            <span class="lp-list__bar" role="img" aria-label="${tHtml('notebook.learn.known', { value: l.known, total: l.total })}"><i class="lp-stage--mature" style="width:${k.toFixed(2)}%"></i><i class="lp-stage--learning" style="width:${g.toFixed(2)}%"></i></span>
+            ${extra.length ? `<span class="lp-list__more">${extra.map(esc).join(' · ')}</span>` : ''}
+          </li>`;
+        })
         .join('')}</ul>`
-    : `<p class="lrp-none">${tHtml('notebook.learn.none.families')}</p>`;
+    : '';
 
-  let n = 0;
-  return `<div class="lrp-frame"><div class="lrp">
-    ${mast}
-    ${section('lrp-sec--memory', ++n, t('notebook.learn.section.memory'), memory)}
-    ${section('lrp-sec--ahead', ++n, t('notebook.learn.section.ahead'), ahead)}
-    ${section('lrp-sec--held', ++n, t('notebook.learn.section.held'), heldBody)}
-    ${section('lrp-sec--answers', ++n, t('notebook.learn.section.answers'), answersBody)}
-    ${section('lrp-sec--skills', ++n, t('notebook.learn.section.skills'), skills)}
-    ${section('lrp-sec--lists', ++n, t('notebook.learn.section.lists'), lists)}
-    ${section('lrp-sec--trouble', ++n, t('notebook.learn.section.trouble'), trouble)}
-    ${section('lrp-sec--fams', ++n, t('notebook.learn.section.families'), fams)}
+  return `<div class="lp-frame"><div class="lp">
+    ${todayPanel}
+    ${section('lp-words', t('notebook.learn.section.lists'), wordsBody)}
+    ${section('lp-memory', t('notebook.learn.section.memory'), memoryBody)}
+    ${section('lp-ahead', t('notebook.learn.section.ahead'), ahead)}
+    ${section('lp-days', t('notebook.learn.section.days'), daysBody)}
+    ${section('lp-skills-sec', t('notebook.learn.section.skills'), skills)}
+    ${section('lp-trouble', t('notebook.learn.section.trouble'), trouble)}
+    ${lists ? section('lp-books', t('notebook.learn.section.books'), lists) : ''}
   </div></div>`;
 }

@@ -37,6 +37,7 @@ export { loadPicture, pictureSrc, hydratePictures, clearPictureLoads } from './p
 export {
   addVocab,
   fillEmptyDefinitions,
+  refreshFromLookup,
   listEmptyDefinitions,
   listEmptyReadings,
   getVocab,
@@ -76,6 +77,7 @@ export {
 } from './window-title';
 export {
   vocabReadings,
+  entryReadings,
   vocabSenses,
   vocabDayGroup,
   vocabWhen,
@@ -134,7 +136,7 @@ export {
   type CardLayout,
 } from './notebook-views';
 export { analyzeMorphemes, morphBreakdown, morphEntry, morphForms, wordOrigin, type Morph, type MorphEntry, type MorphEtymon, type MorphKind } from './morphology';
-export { vocabPayloadFromResult, examplesFromResult, synonymsFromResult, canAddToWordBook } from './vocab-payload';
+export { vocabPayloadFromResult, examplesFromResult, synonymsFromResult, antonymsFromResult, familyFromResult, canAddToWordBook, lookupSettled, savedSenses } from './vocab-payload';
 
 export {
   type ContextOrigin,
@@ -207,6 +209,7 @@ export {
   parseFreeDictionaryPhonetics,
   extractIpaFromWikitext,
   mergePronunciations,
+  tidyPronunciations,
   formatPronunciationLine,
   recordedPronunciationUrls,
   cleanIpa,
