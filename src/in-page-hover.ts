@@ -53,10 +53,23 @@ export function wordAtPoint(doc: Document, x: number, y: number): HoverWord | nu
  * Looks up the word the pointer rests on. `send` gets the pointer's screen point and the word; a
  * word is sent once until the pointer leaves it, and nothing is sent while a button is held or text
  * is selected (selecting has its own lookup).
+ *
+ * `onRequest` hears the trigger shortcut pressed over this page: the native probe stands aside over
+ * a focused Phevere window, so the page reads the word under the pointer then and sends it as asked
+ * for, wherever the pointer has moved since the last word went.
  */
-export function wireInPageHover(send: (screenX: number, screenY: number, word: string) => void): void {
+export function wireInPageHover(
+  send: (screenX: number, screenY: number, word: string, requested?: boolean) => void,
+  onRequest?: (answer: (x: number, y: number, screenX: number, screenY: number) => void) => void,
+): void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let sent: HoverWord | null = null;
+  onRequest?.((x, y, screenX, screenY) => {
+    const hit = wordAtPoint(document, x, y);
+    if (!hit) return;
+    sent = hit;
+    send(screenX, screenY, hit.word, true);
+  });
   document.addEventListener(
     'mousemove',
     (e) => {

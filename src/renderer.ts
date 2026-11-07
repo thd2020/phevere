@@ -1496,7 +1496,7 @@ function initializeMainWindow() {
   wireAccountMenu();
   wireMainWindowImageIngest();
   wireInAppTextSelectionLookup();
-  wireInPageHover((x, y, word) => window.electronAPI?.hoverWord?.(x, y, word));
+  wireInPageHover((x, y, word, requested) => window.electronAPI?.hoverWord?.(x, y, word, requested), window.electronAPI?.onHoverWordRequest);
   wireMainWorkspace();
   renderRecentLookups();
   void loadVocabNotebook();
@@ -1549,7 +1549,7 @@ function initializeClipboardWindow() {
   document.body.className = 'clipboard-window main-window';
   initializeMainWindowControls();
   wireInAppTextSelectionLookup();
-  wireInPageHover((x, y, word) => window.electronAPI?.hoverWord?.(x, y, word));
+  wireInPageHover((x, y, word, requested) => window.electronAPI?.hoverWord?.(x, y, word, requested), window.electronAPI?.onHoverWordRequest);
   wireLiveResizeClass();
   void showClipboardHistory();
 }
