@@ -37,6 +37,7 @@ export { loadPicture, pictureSrc, hydratePictures, clearPictureLoads } from './p
 export {
   addVocab,
   fillEmptyDefinitions,
+  refreshFromLookup,
   listEmptyDefinitions,
   listEmptyReadings,
   getVocab,
@@ -134,7 +135,7 @@ export {
   type CardLayout,
 } from './notebook-views';
 export { analyzeMorphemes, morphBreakdown, morphEntry, morphForms, wordOrigin, type Morph, type MorphEntry, type MorphEtymon, type MorphKind } from './morphology';
-export { vocabPayloadFromResult, examplesFromResult, synonymsFromResult, canAddToWordBook } from './vocab-payload';
+export { vocabPayloadFromResult, examplesFromResult, synonymsFromResult, canAddToWordBook, lookupSettled, savedSenses } from './vocab-payload';
 
 export {
   type ContextOrigin,

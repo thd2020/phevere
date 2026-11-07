@@ -151,6 +151,7 @@ import {
   applyDictionaryResultToNotebook,
   cancelVocabEnrich,
   enqueueVocabEnrich,
+  refreshVocabEntry,
   startVocabEnricher,
   stopVocabEnricher,
 } from './services/vocab-enrich';
@@ -3633,6 +3634,7 @@ ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4, deta
   return vocabStore.reviewVocab(id, grade, Date.now(), answerDetailsFrom(details));
 });
 ipcMain.handle('vocab-history', async () => listAnswerHistory());
+ipcMain.on('vocab-refresh', (_e, lemma: string) => refreshVocabEntry(String(lemma || '')));
 // A destructive step asks first, in the system's own dialog like the import questions.
 ipcMain.handle('vocab-confirm', async (e, ask: { message?: unknown; detail?: unknown; confirm?: unknown }) => {
   const win = BrowserWindow.fromWebContents(e.sender);

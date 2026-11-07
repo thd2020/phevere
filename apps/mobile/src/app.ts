@@ -14,6 +14,8 @@ import {
   hideSenseImage,
   unhideSenseImage,
   fillEmptyDefinitions,
+  refreshFromLookup,
+  lookupSettled,
   findByLemma,
   listEmptyDefinitions,
   listEmptyReadings,
@@ -1697,7 +1699,12 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab, lang?:
     prefetchClips(next);
     for (const wake of [...resultWaiters]) wake(next);
     // The saved word in the language shown: "give" opened in Danish is not the English one.
-    const nextSaved = await findByLemma(saveLemma(next), next.detectedLanguage).catch(() => null);
+    let nextSaved = await findByLemma(saveLemma(next), next.detectedLanguage).catch(() => null);
+    // A saved word's card is brought up to date with a finished lookup, so it says what this page says.
+    if (nextSaved && lookupSettled(next)) {
+      const payload = vocabPayloadFromResult(next, nextSaved.lemma);
+      nextSaved = (await refreshFromLookup([nextSaved.lemma], { ...payload, sourceLang: next.detectedLanguage }).catch(() => null)) || nextSaved;
+    }
     if (generation !== lookupGeneration) return;
     saved = nextSaved;
     void loadSenseImages(generation);

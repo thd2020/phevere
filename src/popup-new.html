@@ -4346,9 +4346,11 @@ function startAutoCloseTimeout() {
            const isFormOf = /^(?:the\s+)?(?:plural|past(?:\s+tense)?|simple\s+past|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|third-person\s+singular(?:\s+simple\s+present)?|alternative\s+(?:form|spelling)|(?:common\s+)?misspelling|obsolete\s+(?:form|spelling)|archaic\s+(?:form|spelling)|inflection|conjugated\s+form)\s+of\b/i.test(m);
            return !isFormOf || m.length > 64;
          });
-         const useDefs = substantive.length ? substantive : defs;
+         // English senses first, then a gloss in another language, as the Lexicon shows them.
+         const lx = window.phevereLexicon;
+         const kept = substantive.length ? substantive : defs;
+         const useDefs = lx && lx.savedSenses ? lx.savedSenses(kept) : kept.slice(0, 4);
          const defJoined = useDefs
-           .slice(0, 4)
            .map(function (d) { return stripHtmlToText(d.meaning || d.definition || ''); })
            .filter(Boolean)
            .join('\n');

@@ -34,7 +34,7 @@ import { wirePictureZoom } from '@phevere/core/picture-zoom';
 import '@phevere/core/popover-menu.css';
 import { openMenu } from '@phevere/core/popover-menu';
 import { bookPickItems } from '@phevere/core/wordbook-views';
-import { canAddToWordBook } from '@phevere/core/vocab-payload';
+import { canAddToWordBook, savedSenses } from '@phevere/core/vocab-payload';
 import {
   t,
   tHtml,
@@ -93,6 +93,7 @@ import { windowLanguageReady } from './ui-language';
   openMenu,
   bookPickItems,
   canAddToWordBook,
+  savedSenses,
   wirePictureZoom,
 };
 

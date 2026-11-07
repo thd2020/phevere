@@ -13,7 +13,8 @@ import { stripGlossText } from './lookup-policy';
 import { formatVocabLangPair, vocabLookupLang } from './vocab-lang';
 import { findWordInSentence, siteOf, type SourceContext } from './source-context';
 import { bookName } from './book-names';
-import { formatDate, formatRelativeTime, t, tHtml, uiLocale } from './i18n/runtime';
+import { sourceDisplayName } from './lexicon-parts';
+import { formatDate, formatList, formatRelativeTime, t, tHtml, uiLocale } from './i18n/runtime';
 
 /** A phrase put at the start of a line, with its first letter capitalised as that language does. */
 function sentenceStart(s: string): string {
@@ -267,8 +268,9 @@ function factsHtml(e: VocabViewEntry, saved: number, now: number): string {
   if (source) facts.push(['source', t('notebook.list.fact.source'), source]);
   const device = clean(e.device);
   if (device) facts.push(['device', t('notebook.list.fact.device'), esc(device)]);
-  const sources = (e.sources || []).map(clean).filter(Boolean).slice(0, 3);
-  if (sources.length) facts.push(['dictionary', t('notebook.list.fact.dictionary'), esc(sources.join(', '))]);
+  // Named as the lookup's "Definitions from" line names them.
+  const sources = [...new Set((e.sources || []).map((s) => sourceDisplayName(clean(s))).filter(Boolean))].slice(0, 4);
+  if (sources.length) facts.push(['dictionary', t('notebook.list.fact.dictionary'), esc(formatList(sources))]);
   const reps = Number(e.reps || 0);
   if (e.reviewDue != null && reps > 0) {
     facts.push(['review', t('notebook.list.fact.review'), tHtml('notebook.list.reviewsSoFar', { when: dueIn(Number(e.reviewDue), now), count: reps })]);

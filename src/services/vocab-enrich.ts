@@ -10,6 +10,7 @@ import { formatPronunciationLine } from './pronunciation';
 import * as vocabStore from './vocab-store';
 import { wrapConsole } from '../logger';
 import { isGrammaticalFormOfGloss, saveLemma } from './lookup-policy';
+import { lookupSettled, savedSenses } from '@phevere/core';
 
 const console = wrapConsole('vocab-enrich');
 
@@ -18,7 +19,8 @@ const SCAN_MS = 120_000;
 const BETWEEN_JOBS_MS = 400;
 const SAVE_GRACE_MS = 2500;
 
-type Job = { lemma: string; attempts: number };
+/** `refresh`: look the word up even though its row is full, to bring the row up to date. */
+type Job = { lemma: string; attempts: number; refresh?: boolean };
 
 const queue: Job[] = [];
 const queued = new Set<string>();
@@ -59,9 +61,8 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
     const m = stripHtmlToText(d.meaning || '');
     return !isGrammaticalFormOfGloss(m) || m.length > 64;
   });
-  const useDefs = substantive.length ? substantive : defs;
+  const useDefs = savedSenses(substantive.length ? substantive : defs);
   const defJoined = useDefs
-    .slice(0, 4)
     .map((d) => stripHtmlToText(d.meaning || ''))
     .filter(Boolean)
     .join('\n');
@@ -126,7 +127,10 @@ export async function applyDictionaryResultToNotebook(
 ): Promise<vocabStore.VocabEntry | null> {
   const payload = payloadFromDictionaryResult(result);
   if (!payload || !result) return null;
-  const filled = await vocabStore.fillEmptyDefinitions(lemmaCandidates(result, extraLemma), payload);
+  // A finished lookup replaces what an early one saved; an early one only fills empty rows.
+  const filled = lookupSettled(result)
+    ? await vocabStore.refreshFromLookup(lemmaCandidates(result, extraLemma), payload)
+    : await vocabStore.fillEmptyDefinitions(lemmaCandidates(result, extraLemma), payload);
   if (filled) {
     cancelVocabEnrich(filled.lemma);
     for (const lemma of lemmaCandidates(result, extraLemma)) cancelVocabEnrich(lemma);
@@ -147,6 +151,24 @@ export function cancelVocabEnrich(lemma: string): void {
 export function stopVocabEnricher(): void {
   queued.clear();
   queue.length = 0;
+}
+
+/** Words looked up again this run to refresh their rows, so opening a row twice asks once. */
+const refreshed = new Set<string>();
+
+/**
+ * Looks a saved word up again in the background when its row is opened in Words, so a row saved
+ * from an early result, or before a dictionary was installed, comes to match the lookup. Usually a
+ * cache hit; once per word per run.
+ */
+export function refreshVocabEntry(lemma: string): void {
+  const trimmed = (lemma || '').trim();
+  const key = keyOf(trimmed);
+  if (!trimmed || trimmed.length > 80 || refreshed.has(key) || queued.has(key)) return;
+  refreshed.add(key);
+  queued.add(key);
+  queue.push({ lemma: trimmed, attempts: 0, refresh: true });
+  void pump();
 }
 
 export function enqueueVocabEnrich(lemma: string, delayMs = SAVE_GRACE_MS): void {
@@ -173,7 +195,7 @@ async function enrichOne(job: Job): Promise<boolean> {
   if (!existing) return true;
   const hasDef = !!(existing.definition && existing.definition.trim());
   const hasReading = !!(existing.reading && existing.reading.trim());
-  if (hasDef && hasReading) return true;
+  if (hasDef && hasReading && !job.refresh) return true;
 
   const result = await dictionaryService.lookup(job.lemma, 'auto', undefined, {
     skipEtymology: true,

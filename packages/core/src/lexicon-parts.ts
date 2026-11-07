@@ -485,6 +485,24 @@ export function glossSectionLabel(lang: string): { heading: string; tab: string 
  * for each dictionary they quote, rather than under every sense: "Definitions from Wiktionary,
  * Free Dictionary and Datamuse". `names` are display names in the senses' order; repeats drop.
  */
+/** A dictionary's short name, as the lookup's "Definitions from" line shows it (GCIDE as "Webster 1913"). */
+export function sourceDisplayName(src: string): string {
+  const s = String(src || '').trim();
+  const key = s.toLowerCase();
+  if (!s || key === 'freedictionaryapi' || key === 'free dictionary api') return s && 'Free Dictionary';
+  if (key === 'wiktionary') return 'Wiktionary';
+  if (key === 'datamuse') return 'Datamuse';
+  if (key.includes('oxford')) return 'Oxford';
+  if (key.includes('wordnet')) return 'WordNet';
+  if (key.includes('webster') || key.includes('gcide')) return 'Webster 1913';
+  if (key.includes('cedict')) return 'CC-CEDICT';
+  if (key.includes('freedict')) return 'FreeDict';
+  if (key.includes('wordsapi')) return 'WordsAPI';
+  if (key.includes('collins')) return 'Collins';
+  if (key.includes('youdao')) return 'Youdao';
+  return s;
+}
+
 export function definitionSourcesHtml(names: string[]): string {
   const list: string[] = [];
   for (const n of names.map((x) => String(x || '').trim())) if (n && !list.includes(n)) list.push(n);

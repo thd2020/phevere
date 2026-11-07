@@ -551,6 +551,18 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.doesNotMatch(empty, /aria-label="Right:/, 'no share right before any answer');
 }
 
+// A saved word keeps its English senses first and one gloss in another language after them, as
+// the lookup shows them ("isomorphism" saved its two Chinese glosses first on 2026-11-07).
+{
+  const { savedSenses } = load('vocab-payload');
+  const zh = (m) => ({ meaning: m, source: 'Chinese Wiktionary' });
+  const en = (m) => ({ meaning: m, source: 'Wiktionary' });
+  const keep = (defs) => savedSenses(defs).map((d) => d.meaning);
+  assert.deepEqual(keep([zh('同晶型'), zh('同构'), en('Similarity of form'), en('the similarity in form of organisms')]), ['Similarity of form', 'the similarity in form of organisms', '同晶型', '同构']);
+  assert.deepEqual(keep([en('a'), en('b'), en('c'), en('d'), en('e'), zh('甲')]), ['a', 'b', 'c', '甲'], 'one gloss in another language keeps its place');
+  assert.deepEqual(keep([zh('甲'), zh('乙')]), ['甲', '乙'], 'only Chinese glosses: they are the senses');
+}
+
 // Rows: Look up sits in the collapsed row, not only in the details.
 const row = vocabEntryHtml({ id: 'x', lemma: 'inspect', definition: 'look' }, false, now);
 const head = row.slice(0, row.indexOf('vocab-entry__details'));

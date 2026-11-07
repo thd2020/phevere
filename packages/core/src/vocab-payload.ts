@@ -1,7 +1,21 @@
 import type { DictionaryResult, Definition } from './dictionary';
 import { isGrammaticalFormOfGloss, stripGlossText } from './lookup-policy';
 import { inferVocabGlossLang } from './vocab-lang';
+import { splitByGlossLanguage } from './lexicon-parts';
 import type { VocabAddInput } from './vocab-store';
+
+/**
+ * The senses a saved word keeps, in the order its lookup shows them: senses glossed in English
+ * first, then the first gloss in another language (Chinese Wiktionary's 老态龙钟的 for "decrepit"),
+ * `max` in all. Glosses in other languages sit in a section after the English senses in the lookup,
+ * so a saved row never leads with one.
+ */
+export function savedSenses<T extends { source?: string; sources?: string[]; meaning?: string; definition?: string }>(defs: T[], max = 4): T[] {
+  const { main, other } = splitByGlossLanguage(defs);
+  const foreign = other.flatMap((o) => o.defs);
+  if (!foreign.length) return main.slice(0, max);
+  return main.length >= max ? [...main.slice(0, max - 1), foreign[0]] : [...main, ...foreign].slice(0, max);
+}
 
 function usableVocabDef(d: Definition): boolean {
   if (!d || d.source === 'Fallback' || d.source === 'Timeout') return false;
@@ -11,6 +25,20 @@ function usableVocabDef(d: Definition): boolean {
 }
 
 /** "US /…/ · UK /…/", one entry when both accents read the same. */
+/**
+ * Whether a lookup is finished enough to replace a saved word's definition (`refreshFromLookup`):
+ * it has dictionary senses, not only a translation, and every dictionary it waited for answered
+ * without failing. An early result, or one from a lookup that timed out, only fills empty rows.
+ */
+export function lookupSettled(result: DictionaryResult | null | undefined): boolean {
+  const usable = (result?.definitions || []).some((d) => d.source !== 'Fallback' && d.source !== 'Timeout' && String(d.meaning || '').trim());
+  const meta = (result?.metadata || {}) as { sourceStatus?: Record<string, string>; expectedSources?: string[] };
+  const status = meta.sourceStatus;
+  if (!usable || !status || typeof status !== 'object') return false;
+  if (Object.values(status).some((v) => v === 'fail')) return false;
+  return (meta.expectedSources || []).every((k) => !!status[k] && status[k] !== 'fail');
+}
+
 function vocabReading(result: DictionaryResult): string | undefined {
   const list = result.pronunciations || [];
   if (list.length) {
@@ -48,9 +76,8 @@ export function vocabPayloadFromResult(result: DictionaryResult | null, lemma: s
     const m = stripGlossText(d.meaning || '');
     return !isGrammaticalFormOfGloss(m) || m.length > 64;
   });
-  const useDefs = substantive.length ? substantive : defs;
+  const useDefs = savedSenses(substantive.length ? substantive : defs);
   const defJoined = useDefs
-    .slice(0, 4)
     .map((d) => stripGlossText(d.meaning || ''))
     .filter(Boolean)
     .join('\n');

@@ -2436,6 +2436,9 @@ function wireNotebookActions(root: HTMLElement): void {
         const open = !nbExpanded.has(id);
         if (open) nbExpanded.add(id);
         else nbExpanded.delete(id);
+        // An opened row is brought up to date with the word's lookup in the background.
+        const lemma = vocabNotebookCache.find((x) => x?.id === id)?.lemma;
+        if (open && lemma) window.vocabAPI?.refresh?.(lemma);
         item.classList.toggle('is-expanded', open);
         item.classList.toggle('is-collapsed', !open);
         el.setAttribute('aria-expanded', open ? 'true' : 'false');
