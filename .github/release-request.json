@@ -1,1 +1,1 @@
-{"tag":"v2.3.0","targets":"android","reason":"Retry the Android build with the iOS changes merged; the last try lost its adb connection in the upgrade test."}
+{"tag":"v4.3.2","targets":"all","reason":"Rebuild v4.3.2 with the fixes from #73: saved words keep senses from dictionaries another computer has, and the trigger reads the word under the pointer inside Phevere."}
