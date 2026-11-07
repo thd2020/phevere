@@ -177,7 +177,7 @@ export function forecastChartHtml(entries: NotebookEntry[], now: number, days = 
 }
 
 /** Words saved (or, in a book, started) per day over twelve weeks, with the words of each day. */
-export function savedHeatmapHtml(entries: NotebookEntry[], now: number, noun = 'saved', weeks = 12): string {
+export function savedHeatmapHtml(entries: NotebookEntry[], now: number, noun: 'saved' | 'started' = 'saved', weeks = 12): string {
   const today = dayStart(now);
   const start = dayStart(today - (weeks * 7 - 1) * DAY + DAY / 2);
   const byDay = new Map<number, string[]>();

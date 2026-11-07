@@ -474,32 +474,50 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.deepEqual(s.lists[0], { id: 'mine', label: 'My words', total: 3, fresh: 1, learning: 1, known: 1 });
   assert.deepEqual(s.skills.spelling, { mastered: 1, tested: 1 });
   assert.deepEqual(s.skills.meaning, { mastered: 0, tested: 2 });
-  assert.equal(s.families[0].label, 'port');
-  assert.equal(s.families[0].known, 1);
   assert.equal(s.perDay.length, 30);
   assert.equal(s.perDay[29].right + s.perDay[29].wrong, 2);
   assert.equal(s.inRotation, 2);
   assert.ok(s.curve[0] > s.curve[30], 'recall falls without review');
+  assert.equal(s.startedCount, 2);
+  assert.equal(s.learnedCount, 1, 'portable is past its first steps; transport is still learning');
+  assert.equal(s.growth.length, 41, 'growth since the first answer, forty days ago');
+  assert.deepEqual(s.growth[40], { day: s.growth[40].day, started: 2, learned: 1 }, 'the chart ends on the counts shown beside it');
+  assert.equal(s.growth[0].started, 1, 'portable was started on the first day');
+  assert.equal(progressSummary({ history: history.slice(3), scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 }).growth.length, 14, 'two weeks at least');
+  assert.deepEqual(s.retention, { right: 3, total: 3 }, 'answers to words already started in 30 days (Anki true retention)');
   const page = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
-  for (const label of ['New words', 'Reviews', 'Day streak', 'Skills', 'Root families', 'Answers per day', 'Memory', 'Reviews ahead', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
+  for (const label of ['Today', 'Answers today', 'New words', 'Reviews', 'Day streak', 'Words', 'Memory', 'Reviews ahead', 'Study days', 'Skills', 'Trouble words']) assert.match(page, new RegExp(label));
+  assert.doesNotMatch(page, /Root families|How long words are held|Lists</, 'no root families, no hold buckets, no lists panel for one list');
   // Labels name things; no line tells the learner how to use a chart.
   assert.doesNotMatch(page, /Pick a|Tap a|to see its/, 'no instructions on Progress');
   assert.doesNotMatch(views.reviewHtml(rq, rs, 10, { now }), /Pick a|Tap a|to see its/, 'no instructions on Today');
-  // Every chart has a y axis label, ticks and a readout, and each bar its own readout.
-  assert.match(page, /data-lrc="memory"[\s\S]*data-lrc-when="1"[\s\S]*data-lrc-when="2"/, 'memory today, in a week and in a month');
-  assert.equal((page.match(/class="lrc-mem__dot[" ]/g) || []).length, 2, 'one dot per word in rotation');
-  assert.match(page, /data-lrc="due30"[\s\S]*class="lrc-ylabel"[^>]*>Words due/);
-  assert.equal((page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0].match(/class="lrc-hit"/g) || []).length, 30, 'one bar a day');
-  assert.match(page, /data-lrc="answers"[\s\S]*<template data-for="29"><p class="lrc-read__head"><b>[^<]+<\/b> · 2 answers, 50% right/);
-  assert.match(page, /aria-label="Reviews: 2 of 3"/, 'the review gauge says what it counts');
+  // Today: the answers given and the share right, the two meters, the week of study days.
+  assert.match(page, /class="lp-stat__n">2<\/b><span class="lp-stat__label">Answers today<\/span><span class="lp-stat__sub"><b>50%<\/b> right/);
+  assert.match(page, /aria-label="Reviews: 2 of 3"/, 'the review meter says what it counts');
   assert.match(page, /aria-label="New words: 1 of 10"/);
-  assert.match(page, /aria-label="Right: 50%"/, "today's share right is a gauge, not a sentence");
-  // Short labels, not sentences: no caption on Progress runs past four words.
-  for (const m of page.matchAll(/class="lrp-fig__label">([^<]*)</g)) assert.ok(m[1].split(/\s+/).length <= 4, `label too long: ${m[1]}`);
-  assert.doesNotMatch(page, /lrp-lede|Today you started|words you would/);
-  assert.match(page, /class="lrp-giant" style="--ch:1">3</, 'the streak is the masthead numeral');
-  assert.doesNotMatch(page, /lrp-card|data-lrc-range/, 'no cards and no slider');
-  assert.doesNotMatch(page, /at most 20%/);
+  assert.match(page, /1 left/);
+  assert.equal((page.match(/class="lp-day[" ]/g) || []).length, 7, 'a week of days');
+  assert.equal((page.match(/class="lp-day is-on/g) || []).length, 3, 'today, yesterday and the day before were studied');
+  assert.match(page, /<b>3<\/b> Day streak/);
+  // Over the goal it says so instead of "52 of 20".
+  const many = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 1, now: t0 });
+  assert.match(many, /aria-label="New words: 1 · goal 1"/);
+  assert.match(many, /class="lp-meter is-done"[^>]*aria-label="New words/);
+  // Words: known of started, the stages with their words, ninety days of growth.
+  assert.match(page, /class="lp-stat__n">1<\/b><span class="lp-stat__label">Learned<\/span><span class="lp-stat__sub">of 2 started/);
+  assert.match(page, /<details class="lp-stage"><summary><i class="lp-stage--mature"><\/i>Mature <b>1<\/b><\/summary>[\s\S]*?data-q="portable"/);
+  assert.match(page, /class="lp-growth" role="img" aria-label="1 learned and 2 started, since /);
+  // Memory: remembered now, the curve without review, and reviews right over 30 days.
+  assert.match(page, /<span class="lp-stat__label">Remembered<\/span><span class="lp-stat__sub"><b>\d<\/b> of 2/);
+  assert.match(page, /Right in reviews<\/span><span class="lp-stat__sub">Last 30 days · aim 90%/);
+  assert.match(page, /class="lp-curve"[\s\S]*In a week <b>\d+%<\/b>[\s\S]*In a month <b>\d+%<\/b>/);
+  // Every chart has a readout; the forecast has a bar a day for two weeks; study days are a heatmap.
+  assert.match(page, /data-lrc="due14"[\s\S]*class="lrc-ylabel"[^>]*>Words due/);
+  assert.equal((page.match(/data-lrc="due14"[\s\S]*?<\/svg>/)[0].match(/class="lrc-hit"/g) || []).length, 14, 'one bar a day');
+  assert.match(page, /data-lrc="days"[\s\S]*aria-label="Answers per day"/);
+  assert.equal((page.match(/data-lrc="days"[\s\S]*?<\/svg>/)[0].match(/class="lrc-heat /g) || []).length, 182, 'twenty-six weeks of days');
+  assert.match(page, /4 days studied in 26 weeks/, "forty days ago, the day before yesterday, yesterday and today");
+  assert.doesNotMatch(page, /lrp-|data-lrc-range|data-lrc="memory"/, 'nothing of the old page');
   // Words by the stages Today and the question tags use.
   assert.deepEqual(s.strength.map((b) => b.label), ['New', 'Learning', 'Young', 'Mature']);
   assert.deepEqual(s.strength.map((b) => b.words), [['export'], ['transport'], [], ['portable']]);
@@ -514,41 +532,21 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal(withOdd.reviewsToday, s.reviewsToday);
   assert.deepEqual(withOdd.strength.map((b) => b.words), s.strength.map((b) => b.words));
   const oddPage = progressHtml({ history, scope: 'mine', ctx: null, mine: [...words, ...odd], goal: 10, now: t0 });
-  assert.equal(oddPage.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0], page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0], 'the forecast is unchanged');
-  assert.match(page, /<b class="lrp-fig__n" style="--ch:1">1<\/b><p class="lrp-fig__cap"><span class="lrp-fig__label">Mature<\/span><span class="lrp-fig__sub">of 2 started<\/span>/);
+  assert.equal(oddPage.match(/data-lrc="due14"[\s\S]*?<\/svg>/)[0], page.match(/data-lrc="due14"[\s\S]*?<\/svg>/)[0], 'the forecast is unchanged');
   // Memory's number is a prediction: "Remembered", never "Recalled today", which reads as answers given today.
-  assert.match(page, /<span class="lrp-fig__label">Remembered<\/span><span class="lrp-fig__sub">of 2 words<\/span><span class="lrp-fig__facts"><span><b>\d+<\/b> due<\/span>/);
+  assert.match(page, /<span class="lp-stat__label">Remembered<\/span>/);
   assert.doesNotMatch(page, /Recalled|below 90%<\/span>/);
   assert.doesNotMatch(page, /Under 1 wk|3 wk–3 mo/, 'no week buckets');
   assert.equal(s.mix.listening, 1);
   const charts = load('learn-charts');
   const r14 = charts.retentionAt(s.rotation, t0, 14);
   assert.ok(r14.average < 1 && r14.weakest[0].lemma === 'transport', 'the learning word is weakest after two weeks');
-  // Memory: the words you would recall fall over a week, and a word falls below 90% one stability after its review.
-  const m0 = charts.memoryAt(s.rotation, t0, 0);
-  const m7 = charts.memoryAt(s.rotation, t0, 7);
-  assert.ok(m0.recalled > m7.recalled && m7.below >= m0.below);
-  const portable = s.rotation.find((w) => w.lemma === 'portable');
-  assert.equal(charts.slipDate(portable), t0 - 2 * DAYMS + 30 * DAYMS);
-  assert.ok(Math.abs(charts.memoryAt([portable], charts.slipDate(portable), 0).recall[0] - 0.9) < 1e-6, 'recall is 90% at the slip date');
-  const layout = charts.memoryLayout([[0.95, 0.95, 0.6], [0.7, 0.7, 0.4]]);
-  assert.equal(layout.at[0][0].x, layout.at[0][1].x, 'equal recall stacks in one column');
-  assert.ok(layout.at[0][1].y < layout.at[0][0].y, 'the second dot sits on the first');
-  assert.equal(layout.at[1][2].x, Math.min(...layout.at.flat().map((p) => p.x)), 'recall at or under 50% piles at the left edge');
-  assert.ok(charts.memoryLayout([[0.4], [0.3]]).at[0][0].x === charts.memoryLayout([[0.4], [0.3]]).at[1][0].x, 'everything under 50% shares the edge');
-  // A large notebook held near 100%: every dot stays inside the strip, which grows only if it must.
-  for (const n of [1500, 5000]) {
-    const big = charts.memoryLayout([Array.from({ length: n }, (_, i) => 0.97 + (0.03 * i) / n)]);
-    const ys = big.at[0].map((p) => p.y);
-    assert.ok(Math.min(...ys) - big.size / 2 >= 0, `${n} words: no dot above the strip (top ${Math.min(...ys)})`);
-    assert.ok(Math.max(...ys) + big.size / 2 <= big.base + 1e-9, `${n} words: no dot below the baseline`);
-  }
-  assert.equal(charts.memoryLayout([[0.95, 0.9]]).base, layout.base, 'a small notebook keeps the usual height');
   const empty = progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 });
-  assert.match(empty, /No answers yet/);
+  assert.match(empty, /Nothing answered yet today/);
   assert.match(empty, /No words in rotation yet/);
-  assert.match(empty, /aria-label="New words: 0 of 10"[\s\S]*aria-label="Reviews: 0 of 0"/);
-  assert.doesNotMatch(empty, /aria-label="Right:/, 'no share right before any answer');
+  assert.match(empty, /No answers yet/, 'no study days yet');
+  assert.match(empty, /aria-label="Reviews: 0 of 0"[\s\S]*aria-label="New words: 0 of 10"/);
+  assert.doesNotMatch(empty, /Right in reviews/, 'no share right before any review');
 }
 
 // A saved word keeps its English senses first and one gloss in another language after them, as
