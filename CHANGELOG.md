@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.2] - 2026-11-07
+
 ### Added
 
 - Two exam question types in Learn (2026-11-07). "Opposite in meaning" shows a word and asks for its antonym among four, as the GRE and TEM-4 do; one wrong option is a synonym of the word when its entry lists one, since mixing up the direction is the usual slip. Word formation shows a sentence with a gap and a related word in capitals ("DECREPITUDE" for "decrepit"), and you type the form that fits, as in Cambridge B2 First and C1 Advanced. Both come to words you hold for days or longer, after easier questions have gone right.
@@ -721,7 +723,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.1...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.2...HEAD
+[4.3.2]: https://github.com/thd2020/phevere/compare/v4.3.1...v4.3.2
 [4.3.1]: https://github.com/thd2020/phevere/compare/v4.3.0...v4.3.1
 [4.3.0]: https://github.com/thd2020/phevere/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/thd2020/phevere/compare/v4.1.0...v4.2.0
