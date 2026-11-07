@@ -182,6 +182,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   rememberSelection: (x: number, y: number, text: string) => {
     ipcRenderer.send('remember-selection', { x, y, text });
   },
+  hoverWord: (x: number, y: number, text: string) => {
+    ipcRenderer.send('in-page-hover', { x, y, text });
+  },
   hidePopup: () => {
     ipcRenderer.send('hide-popup');
   },
@@ -639,6 +642,8 @@ declare global {
       removeAllListeners: (channel: string) => void;
       showPopup: (x: number, y: number, text: string) => void;
       rememberSelection?: (x: number, y: number, text: string) => void;
+      /** A word the pointer rests on in a Phevere page, at a screen point in DIP. */
+      hoverWord?: (x: number, y: number, text: string) => void;
       hidePopup: () => void;
       speakIpa?: (payload: { ipa: string; accent?: string }) => Promise<{ ok: boolean; error?: string }>;
       cancelIpaSpeak?: () => Promise<{ ok: boolean }>;

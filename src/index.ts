@@ -2956,6 +2956,15 @@ ipcMain.on('show-popup', (_event, { x, y, text }) => {
   rememberAndMaybeOpenPopup(x, y, text);
 });
 
+// Hover inside a Phevere page (in-page-hover.ts): the native hover skips our own windows, so the
+// page reads the word and it goes the way a hover over another app goes, under the same switches.
+ipcMain.on('in-page-hover', (_event, { x, y, text }) => {
+  const word = String(text || '').trim();
+  if (!word || word.length > 64 || !hoverLookup?.isRunning()) return;
+  if (isPrimaryMouseDown() || hoverYieldsToSelection()) return;
+  contextCaptureHub.emit({ text: word, x: Number(x) || 0, y: Number(y) || 0, timestamp: Date.now(), origin: 'hover', coordSpace: 'dip', confidence: 0.95 });
+});
+
 ipcMain.on('hide-popup', () => {
   cancelIpaSpeak();
   popupWindows.forEach(win => {
