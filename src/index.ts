@@ -169,6 +169,7 @@ declare const QUICK_PANEL_WEBPACK_ENTRY: string;
 declare const QUICK_PANEL_PRELOAD_WEBPACK_ENTRY: string;
 declare const OCR_RESULT_WEBPACK_ENTRY: string;
 declare const OCR_RESULT_PRELOAD_WEBPACK_ENTRY: string;
+declare const WEB_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 const installerAudioModel = installerAudioModelArgument(process.argv);
 const installerOcrPack = process.argv.includes(INSTALL_OCR_PACK_FLAG);
@@ -557,11 +558,29 @@ function askPageForHoverWord(): boolean {
   if (!phevereWindowFocused(mainWindow, popupWindows, settingsWindow, ocrOverlayWindow, externalWindows)) return false;
   const win = BrowserWindow.getFocusedWindow();
   if (!win || win.isDestroyed() || win === ocrOverlayWindow) return false;
-  const p = screen.getCursorScreenPoint();
+  askPageAt(win, screen.getCursorScreenPoint());
+  return true;
+}
+
+function askPageAt(win: BrowserWindow, p: { x: number; y: number }): void {
   const c = win.getContentBounds();
   const zoom = win.webContents.getZoomFactor() || 1;
   win.webContents.send('hover-word-request', { x: (p.x - c.x) / zoom, y: (p.y - c.y) / zoom, screenX: p.x, screenY: p.y });
-  return true;
+}
+
+/**
+ * The trigger's read landed on a Phevere window that is not focused (Settings behind the main
+ * window, a pop-up): ask the page at that point, the focused one first when windows overlap.
+ */
+function askOwnWindowAt(x: number, y: number): void {
+  const inside = (w: BrowserWindow): boolean => {
+    if (w.isDestroyed() || !w.isVisible() || w.isMinimized() || w === ocrOverlayWindow) return false;
+    const b = w.getBounds();
+    return x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height;
+  };
+  const focused = BrowserWindow.getFocusedWindow();
+  const win = focused && inside(focused) ? focused : BrowserWindow.getAllWindows().find(inside);
+  if (win) askPageAt(win, { x, y });
 }
 
 /** Linux desktop shortcut → `phevere --lookup-selection`: look up PRIMARY now, whatever the mode. */
@@ -1704,17 +1723,6 @@ function panelMovedByHand(win: BrowserWindow, anchor: PanelAnchor): boolean {
   return anchor.moved;
 }
 
-/** A hover over the text of an open full pop-up; reading the entry must not replace it. */
-function hoverInsideFullPopup(event: ContextEvent): boolean {
-  if (event.origin !== 'hover' || event.requested) return false;
-  const pt = eventCoordSpace(event) === 'physical' ? physicalToDip(event.x, event.y) : { x: event.x, y: event.y };
-  return popupWindows.some((win) => {
-    if (win.isDestroyed() || !panelAnchors.has(win) || !win.isVisible()) return false;
-    const b = win.getBounds();
-    return pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
-  });
-}
-
 /**
  * Show `text` in a full pop-up opened by a lookup, next to the word at (x, y). A pop-up the
  * user moved stays put, and so does one the word lies inside (a word selected in the pop-up).
@@ -2103,12 +2111,6 @@ function wireContextCaptureHubOnce(): void {
 
     // Hover must not replace the selected word, or the trigger and the strip show it instead.
     if (event.origin === 'hover' && hoverYieldsToSelection()) {
-      return;
-    }
-
-    // The pointer resting on a full pop-up's own text while reading it is not a new lookup.
-    // A word there is looked up by selecting it or with the trigger shortcut.
-    if (hoverInsideFullPopup(event)) {
       return;
     }
 
@@ -2676,6 +2678,7 @@ function ensureHoverLookup(): HoverLookupService {
         }
         return { text: '', x, y };
       },
+      onOwnWindow: askOwnWindowAt,
       isMouseDown: isPrimaryMouseDown,
       isBlocked: () =>
         isPrimaryMouseDown() ||
@@ -4433,6 +4436,8 @@ function createWebWindow(url: string): void {
     show: false,
     parent: mainWindow || undefined,
     webPreferences: {
+      // Hover lookup only (web-window-preload.ts); the page gets no API.
+      preload: WEB_WINDOW_PRELOAD_WEBPACK_ENTRY,
       nodeIntegration: false,
       contextIsolation: true,
     },

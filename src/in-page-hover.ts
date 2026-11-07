@@ -8,9 +8,11 @@
 /** How long the pointer rests on a word before it is looked up; the native hover waits as long. */
 const DWELL_MS = 450;
 
-/** Controls, fields and chrome: resting on a button's label is not asking what the word means. */
-const SKIP =
-  'button, input, textarea, select, option, label, [contenteditable=""], [contenteditable="true"], [role="button"], [role="tab"], [role="menuitem"], [role="switch"], .titlebar, .window-controls, .status-bar, .toolbar, [data-no-hover]';
+/**
+ * Text being typed: the pointer rests there to edit, not to look up. Every other word on a page
+ * counts, button and menu labels included, as hovering them in another app does.
+ */
+const SKIP = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], [data-no-hover]';
 
 export interface HoverWord {
   word: string;

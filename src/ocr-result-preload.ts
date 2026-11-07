@@ -4,8 +4,10 @@
  */
 import { contextBridge, ipcRenderer } from 'electron';
 import { exposeUiLanguage } from './ui-language-bridge';
+import { installInPageHover } from './in-page-hover-bridge';
 
 exposeUiLanguage();
+installInPageHover();
 
 contextBridge.exposeInMainWorld('ocrResultAPI', {
   data: (): Promise<{ image: string; page: unknown } | null> => ipcRenderer.invoke('ocr-result-data'),

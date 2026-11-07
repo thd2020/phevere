@@ -98,6 +98,25 @@ hover.start();
   assert.equal(hover.isHeldBySelection(), false, 'the hold expires after selectionHoldMs');
 
   hover.stop();
+
+  // A dwell over a Phevere window leaves it to the page; the trigger's read there hands the point on.
+  const own = [];
+  const ownHover = new HoverLookupService({
+    dwellMs: 0,
+    cooldownMs: 0,
+    cursor: { point: () => ({ x: 10, y: 10 }) },
+    getWordAtPoint: () => ({ text: '', x: 10, y: 10, own: true }),
+    onOwnWindow: (x, y) => own.push([x, y]),
+    skipOcr: () => true,
+  });
+  ownHover.start();
+  now += 1000;
+  await ownHover.tick();
+  assert.deepEqual(own, [], 'a plain dwell over a Phevere window asks nothing');
+  ownHover.requestNow();
+  await ownHover.tick();
+  assert.deepEqual(own, [[10, 10]], "the trigger's read over a Phevere window goes to that window");
+  ownHover.stop();
   finished = true;
-  console.log('Hover selection passed: in-flight probe dropped, hold until next press, drag not counted, expiry.');
+  console.log('Hover selection passed: in-flight probe dropped, hold until next press, drag not counted, expiry, own windows answer the trigger.');
 })().catch((error) => { console.error(error); process.exit(1); });
