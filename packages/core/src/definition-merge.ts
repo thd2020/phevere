@@ -32,8 +32,12 @@ export interface MergeableDefinition {
   collocations?: string[];
 }
 
-/** Strip sense numbers, parenthetical asides, and normalize for comparison. */
-export function normalizeMeaningForMerge(raw: string): string {
+/**
+ * Strip sense numbers, parenthetical asides, and normalize for comparison. `keepAsides` keeps the
+ * text of the asides, for a qualifier one source puts in brackets ("(of a book or document) Not
+ * abridged") and another writes into the sense ("Of a book or document, not abridged").
+ */
+export function normalizeMeaningForMerge(raw: string, keepAsides = false): string {
   let s = (raw || '')
     .normalize('NFC')
     // Wiktionary's inline <style> text (.mw-parser-output .defdate{…}) kept two copies of a sense apart.
@@ -48,8 +52,10 @@ export function normalizeMeaningForMerge(raw: string): string {
   s = s.replace(/^\s*(?:\(?\d+[.)]\)?|[①②③④⑤⑥⑦⑧⑨⑩]|[a-z]\))\s*/i, '');
 
   // Parenthetical asides (often POS tags / register notes that differ across sources)
-  s = s.replace(/\([^)]*\)/g, ' ');
-  s = s.replace(/（[^）]*）/g, ' ');
+  if (!keepAsides) {
+    s = s.replace(/\([^)]*\)/g, ' ');
+    s = s.replace(/（[^）]*）/g, ' ');
+  }
 
   // Common leading tags that sources disagree on
   s = s.replace(
@@ -71,19 +77,6 @@ export function normalizeMeaningForMerge(raw: string): string {
 
 function tokenize(normalized: string): string[] {
   return normalized.split(/\s+/).filter((t) => t.length > 0);
-}
-
-function jaccard(a: string[], b: string[]): number {
-  if (a.length === 0 && b.length === 0) return 1;
-  if (a.length === 0 || b.length === 0) return 0;
-  const setA = new Set(a);
-  const setB = new Set(b);
-  let inter = 0;
-  for (const t of setA) {
-    if (setB.has(t)) inter += 1;
-  }
-  const union = setA.size + setB.size - inter;
-  return union === 0 ? 0 : inter / union;
 }
 
 /** Cheap Levenshtein ratio for short glosses (cap length to keep O(n²) sane). */
@@ -245,25 +238,69 @@ function formatSourceLabel(sources: string[]): string {
   return unique.join(' · ');
 }
 
+/** Function words; negations stay, since "not abridged" and "abridged" are opposite senses. */
+const STOPWORDS = new Set(
+  ('a an the of or and to in on at by for with from as into onto than that which who whom whose this these those ' +
+    'it its is are was were be been being has have had do does did such any some one ones ' +
+    'especially particularly usually often also etc e g i e').split(' '),
+);
+
+const NEGATIONS = new Set(['not', 'no', 'non', 'never', 'without', 'nor', 'neither', 'lacking']);
+
+/** Harman's S-stemmer (1991): plurals and third-person -s only, so "shortened" never meets "short". */
+function sStem(w: string): string {
+  if (w.length > 3 && /ies$/.test(w) && !/[ae]ies$/.test(w)) return w.slice(0, -3) + 'y';
+  if (w.length > 3 && /es$/.test(w) && !/[aeo]es$/.test(w)) return w.slice(0, -1);
+  if (w.length > 3 && /s$/.test(w) && !/[us]s$/.test(w)) return w.slice(0, -1);
+  return w;
+}
+
+function contentWords(normalized: string): Set<string> {
+  const out = new Set<string>();
+  for (const t of tokenize(normalized)) {
+    const w = t.replace(/'s$/, '').replace(/^['-]+|['-]+$/g, '');
+    if (w && !STOPWORDS.has(w)) out.add(sStem(w));
+  }
+  return out;
+}
+
+/** One letter apart in a word of five or more, same first letter: "colour" and "color", "-ise" and "-ize". */
+function spellingVariant(a: string, b: string): boolean {
+  if (a[0] !== b[0] || Math.min(a.length, b.length) < 5 || Math.abs(a.length - b.length) > 1) return false;
+  return levenshteinRatio(a, b) >= 1 - 1 / Math.max(a.length, b.length) - 1e-9;
+}
+
+/**
+ * Two dictionaries' wording of one sense: every content word of the shorter sense is in the longer
+ * one, which adds at most a fifth more (a qualifier, a domain label). This is the "exact" relation
+ * of monolingual word sense alignment; a sense that differs in even one content word ("measuring
+ * temperature" and "measuring pressure") or narrows the other a lot stays apart.
+ */
+function sameSenseWords(a: string, b: string): boolean {
+  const wa = contentWords(a);
+  const wb = contentWords(b);
+  const [small, big] = wa.size <= wb.size ? [wa, wb] : [wb, wa];
+  if (!small.size || (small.size < 3 && small.size < big.size) || small.size / big.size < 0.8) return false;
+  for (const w of small) if (!big.has(w) && ![...big].some((v) => spellingVariant(w, v))) return false;
+  // A negation only one sense has turns it into the opposite sense.
+  for (const w of big) if (NEGATIONS.has(w) && !small.has(w)) return false;
+  return true;
+}
+
 function areSimilar(a: MergeableDefinition, b: MergeableDefinition): boolean {
   if (!samePos(a.partOfSpeech, b.partOfSpeech)) return false;
   const na = normalizeMeaningForMerge(a.meaning);
   const nb = normalizeMeaningForMerge(b.meaning);
   if (!na || !nb) return false;
   if (na === nb) return true;
+  // Compared on words, not characters: "not abridged" holds "abridged", and one letter apart can
+  // be another word ("temperature", "pressure" share most of a sentence).
+  return sameSenseWords(na, nb) || sameSenseWords(normalizeMeaningForMerge(a.meaning, true), normalizeMeaningForMerge(b.meaning, true));
+}
 
-  // Containment of normalized forms (one source omits a clause)
-  if (na.includes(nb) || nb.includes(na)) {
-    const shorter = na.length <= nb.length ? na : nb;
-    const longer = na.length <= nb.length ? nb : na;
-    if (shorter.length / longer.length >= 0.72) return true;
-  }
-
-  const jac = jaccard(tokenize(na), tokenize(nb));
-  if (jac >= 0.82) return true;
-
-  const lev = levenshteinRatio(na, nb);
-  return lev >= 0.88;
+/** Two senses that say the same thing (`areSimilar`), for saved lines that carry no part of speech. */
+export function sameSense(a: string, b: string): boolean {
+  return areSimilar({ partOfSpeech: '', meaning: a, source: '' }, { partOfSpeech: '', meaning: b, source: '' });
 }
 
 /** The grammar codes, labels and collocations of two merged senses, each listed once. */
