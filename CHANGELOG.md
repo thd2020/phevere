@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.3] - 2026-11-08
+
+### Fixed
+
+- One sense, one line (2026-11-08): two dictionaries' wordings of one sense now fold into one, with both named as its source. They fold when every content word of the shorter sense is in the longer one and the longer adds at most a fifth more, such as a qualifier one dictionary puts in brackets and another writes out ("unabridged" listed "(of a book or document) Not abridged…" and "Of a book or document, not abridged…" as two senses). Senses that differ in one content word ("measuring temperature", "measuring pressure"), where one is a much narrower case of the other, or where only one has a "not", stay apart; before, two senses could merge on shared small words alone. Saved words are folded the same way once, and so is a word synced from a device on an older version.
+- Saved words stay tidy (2026-11-08): on the computer, the background refresh of saved words put a space wherever a link had ended ("a reference work .", "not abridged , shortened"), undoing the tidy of 4.3.2 on the next start. It now joins the text as the lookup shows it, and words already saved are tidied again, including ones saved with no language.
+- A new offline dictionary shows up at once (2026-11-08): a word looked up before you installed Webster 1913 or another pack kept showing its old result until the cached lookup expired. Installing or removing a pack now makes each word look itself up again, on the computer and on the phone.
+- Learn asks a saved word as you saved it (2026-11-08): a gap could take a verb form of a saved noun from a rare sense ("erranded" for errand, "fowling" for fowl). A gap now takes only the forms the saved part of speech has. A wrong answer to a gap shows the form that fits when it is not the headword itself. The word in capitals of a word-formation question is now always a word with a recorded use in print; "ERRANDY" was a coinage.
+
 ## [4.3.2] - 2026-11-07
 
 ### Added
@@ -24,10 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- One sense, one line (2026-11-08): two dictionaries' wordings of one sense now fold into one, with both named as its source. They fold when every content word of the shorter sense is in the longer one and the longer adds at most a fifth more, such as a qualifier one dictionary puts in brackets and another writes out ("unabridged" listed "(of a book or document) Not abridged…" and "Of a book or document, not abridged…" as two senses). Senses that differ in one content word ("measuring temperature", "measuring pressure"), where one is a much narrower case of the other, or where only one has a "not", stay apart; before, two senses could merge on shared small words alone. Saved words are folded the same way once, and so is a word synced from a device on an older version.
-- Saved words stay tidy (2026-11-08): on the computer, the background refresh of saved words put a space wherever a link had ended ("a reference work .", "not abridged , shortened"), undoing the tidy of 4.3.2 on the next start. It now joins the text as the lookup shows it, and words already saved are tidied again, including ones saved with no language.
-- A new offline dictionary shows up at once (2026-11-08): a word looked up before you installed Webster 1913 or another pack kept showing its old result until the cached lookup expired. Installing or removing a pack now makes each word look itself up again, on the computer and on the phone.
-- Learn asks a saved word as you saved it (2026-11-08): a gap could take a verb form of a saved noun from a rare sense ("erranded" for errand, "fowling" for fowl). A gap now takes only the forms the saved part of speech has. A wrong answer to a gap shows the form that fits when it is not the headword itself. The word in capitals of a word-formation question is now always a word with a recorded use in print; "ERRANDY" was a coinage.
 - The trigger looks up the word under the pointer inside Phevere (2026-11-07): with Selection set to Shortcut, pressing the trigger over a word in a Phevere window did nothing once the pointer had moved a little along the word or a minute had passed, because the check that reads the word under the pointer in other apps skips Phevere's own windows. The trigger now asks the Phevere page under the pointer for the word there, focused or not.
 - Senses read alike (2026-11-07): an English word's senses now all start with a capital and end with a stop, whichever dictionary wrote them. WordNet gave lowercase phrases with no stop ("a giant supernatural being"), and some Wiktionary senses dropped the stop. Spaces a removed tag left before punctuation are gone ("activity ."), as is the Wiktionary stylesheet text an older save kept, which also stopped two copies of a sense from merging ("moratorium" listed its law sense twice). Chinese and Japanese glosses lose the space after full-width punctuation, and a Chinese Wiktionary note asking for a translation no longer shows as a sense. A foreign word's glosses keep their dictionary form ("house, building" for Haus). Words already saved are tidied once the same way, and lookups cached before this are fetched again.
 - Hover works in a lookup opened from a word list (2026-11-07): the pop-up that opens from a word's lookup button in Words or a word book ignored hover and the trigger, because opening it counted as selecting the word, and hover stands aside while a selected word's pop-up shows. It now counts as a search.
@@ -732,7 +737,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.2...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.3...HEAD
+[4.3.3]: https://github.com/thd2020/phevere/compare/v4.3.2...v4.3.3
 [4.3.2]: https://github.com/thd2020/phevere/compare/v4.3.1...v4.3.2
 [4.3.1]: https://github.com/thd2020/phevere/compare/v4.3.0...v4.3.1
 [4.3.0]: https://github.com/thd2020/phevere/compare/v4.2.0...v4.3.0
