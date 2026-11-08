@@ -79,6 +79,11 @@ function load(name) {
   assert.ok(list.find((e) => e.lemma === 'codon').updatedAt > 1, 'a changed row syncs to other devices');
   assert.equal(list.find((e) => e.lemma === 'serendipity').updatedAt, 4, 'an unchanged row is left alone');
   assert.equal(await sync.normalizeStoredLemmas(), 0, 'the pass runs once');
+  // The same tidy applies to a row synced from a device on an older app; one sense in two wordings is one line.
+  assert.equal(
+    sync.tidyDefinition(['Calculation ; computation .', '(of a book or document) Not abridged, shortened, expurgated or condensed; complete.', 'Of a book or document, not abridged, shortened, expurgated or condensed; complete.'].join('\n')),
+    ['Calculation; computation.', '(of a book or document) Not abridged, shortened, expurgated or condensed; complete.'].join('\n'),
+  );
 
   // New saves are normalized, and a save of an existing word in another case updates it.
   const saved = await store.addVocab({ lemma: '“Mitochondria,”', partOfSpeech: 'noun', sourceLang: 'en', definition: 'organelles' });

@@ -2,6 +2,7 @@ import type { DictionaryResult, Definition } from './dictionary';
 import { isGrammaticalFormOfGloss, stripGlossText } from './lookup-policy';
 import { inferVocabGlossLang } from './vocab-lang';
 import { splitByGlossLanguage } from './lexicon-parts';
+import { tidySenseText } from './sense-text';
 import type { VocabAddInput } from './vocab-store';
 
 /**
@@ -67,6 +68,20 @@ function vocabReading(result: DictionaryResult): string | undefined {
 }
 
 /**
+ * A saved word's definition: one line per sense, as plain text. An English word's senses are
+ * tidied as the lookup tidies them (tidySenseText), since a sense the lookup leaves as its source
+ * wrote it ("Diminutive of bro , a smaller…") must not be saved that way.
+ */
+export function savedDefinition(defs: Array<{ meaning?: string }>, sourceLang?: string): string {
+  const english = !sourceLang || sourceLang === 'auto' || /^en(?:-|$)/i.test(sourceLang);
+  return defs
+    .map((d) => stripGlossText(d.meaning || ''))
+    .map((m) => (english && m ? tidySenseText(m) : m))
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
  * Notebook card from a lookup, as the desktop pop-up saves it: real senses before
  * "plural of X" forms, up to four joined, the first translation when no sense is usable.
  */
@@ -77,10 +92,7 @@ export function vocabPayloadFromResult(result: DictionaryResult | null, lemma: s
     return !isGrammaticalFormOfGloss(m) || m.length > 64;
   });
   const useDefs = savedSenses(substantive.length ? substantive : defs);
-  const defJoined = useDefs
-    .map((d) => stripGlossText(d.meaning || ''))
-    .filter(Boolean)
-    .join('\n');
+  const defJoined = savedDefinition(useDefs, result?.detectedLanguage);
   const tx = (result?.translations || [])[0];
   const sourceList: string[] = [];
   for (const d of useDefs.slice(0, 6)) {

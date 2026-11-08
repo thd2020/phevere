@@ -21,7 +21,7 @@ import { getHttp, getVocabDb, isCoreConfigured } from './runtime';
 import { ensureVocabReady, notifyVocabChanged, registerLemmaMigration, registerSaveHook, rowToEntry, type VocabEntry } from './vocab-store';
 import { plainPluralOf, stripGlossText } from './lookup-policy';
 import { tidySenseText } from './sense-text';
-import { normalizeMeaningForMerge } from './definition-merge';
+import { sameSense } from './definition-merge';
 import { normalizeVocabLemma, typoDistance } from './vocab-lemma';
 import { formOfGlossLemma, formOfLemmaFromGlosses, isRegularInflection, resolveFormOf, stripCitationLines } from './form-of';
 import { foldLookupKey, latinLemmasByPos } from './text-normalize';
@@ -199,7 +199,9 @@ async function applyRemote(
   const progress = local ? progressOf(rowToEntry(local)) : progressOf(e);
   // The same for where the word was saved, which older apps neither know nor send.
   const context = normalizeSourceContext((e as VocabEntry).context) || sourceContextFromJson(local?.context) || undefined;
-  await writeRow({ ...(withoutProgress(e) as VocabEntry), ...progress, device, context, id: change.id, updatedAt: change.updatedAt });
+  // A device on an older app sends definitions in its old style; they are kept in today's here.
+  const definition = englishRow(e.sourceLang) && typeof e.definition === 'string' ? tidyDefinition(e.definition) : e.definition;
+  await writeRow({ ...(withoutProgress(e) as VocabEntry), definition, ...progress, device, context, id: change.id, updatedAt: change.updatedAt });
   if (tomb) await db.runWrite(`DELETE FROM vocab_deleted WHERE id = ?`, [change.id]);
   return true;
 }
@@ -368,7 +370,26 @@ export async function normalizeStoredLemmas(): Promise<number> {
   return changed;
 }
 
-const DEFINITIONS_TIDIED_KEY = 'definitions-tidied-v1';
+const DEFINITIONS_TIDIED_KEY = 'definitions-tidied-v2';
+
+/** English words only: a foreign word's glosses ("dog" for собака) stay lowercase, as bilingual dictionaries print them. */
+function englishRow(lang: unknown): boolean {
+  const l = String(lang ?? '').trim().toLowerCase();
+  return !l || l === 'en' || l === 'auto' || l.startsWith('en-');
+}
+
+/**
+ * A saved definition in the style lookups now give: each sense tidied (tidySenseText), and a line
+ * that says the same as an earlier one (sameSense) left out, as a lookup folds them.
+ */
+export function tidyDefinition(definition: string): string {
+  const lines: string[] = [];
+  for (const raw of String(definition || '').split('\n')) {
+    const line = tidySenseText(raw);
+    if (line && !lines.some((l) => l === line || sameSense(l, line))) lines.push(line);
+  }
+  return lines.join('\n');
+}
 
 /**
  * Saved definitions in the style lookups now give (sense-text.ts): each English sense with a
@@ -381,24 +402,12 @@ export async function tidyStoredDefinitions(): Promise<number> {
   const db = getVocabDb();
   const done = await db.queryOne(`SELECT value FROM sync_state WHERE key = ?`, [DEFINITIONS_TIDIED_KEY]);
   if (done) return 0;
-  // English words only: a foreign word's glosses ("dog" for собака) stay lowercase, as bilingual dictionaries print them.
-  const rows = await db.queryAll(
-    `SELECT id, definition FROM vocab WHERE IFNULL(TRIM(definition), '') <> '' AND (IFNULL(source_lang, '') IN ('', 'en', 'auto') OR source_lang LIKE 'en-%')`,
-  );
+  const rows = (await db.queryAll(`SELECT id, definition, source_lang FROM vocab WHERE IFNULL(TRIM(definition), '') <> ''`)).filter((r) => englishRow(r.source_lang));
   const now = Date.now();
   let changed = 0;
   for (const row of rows) {
     const before = String(row.definition || '');
-    const seen = new Set<string>();
-    const lines: string[] = [];
-    for (const raw of before.split('\n')) {
-      const line = tidySenseText(raw);
-      const key = normalizeMeaningForMerge(line) || line;
-      if (!line || seen.has(key)) continue;
-      seen.add(key);
-      lines.push(line);
-    }
-    const next = lines.join('\n');
+    const next = tidyDefinition(before);
     if (!next || next === before) continue;
     await db.runWrite(`UPDATE vocab SET definition = ?, updated_at = ? WHERE id = ?`, [next, now, row.id]);
     changed += 1;

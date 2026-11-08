@@ -10,7 +10,7 @@ import { formatPronunciationLine } from './pronunciation';
 import * as vocabStore from './vocab-store';
 import { wrapConsole } from '../logger';
 import { isGrammaticalFormOfGloss, saveLemma } from './lookup-policy';
-import { lookupSettled, savedSenses } from '@phevere/core';
+import { lookupSettled, savedDefinition, savedSenses, stripGlossText } from '@phevere/core';
 
 const console = wrapConsole('vocab-enrich');
 
@@ -40,11 +40,9 @@ function backoffMs(attempts: number): number {
   return Math.min(180_000, 15_000 * Math.pow(2, Math.max(0, attempts - 1)));
 }
 
+/** A sense as plain text, inline tags joined as a browser shows them ("work</a>." is "work.", not "work ."). */
 function stripHtmlToText(s: string): string {
-  return String(s || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return stripGlossText(s);
 }
 
 function isUsableDef(d: { source?: string; meaning?: string } | undefined): boolean {
@@ -62,10 +60,7 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
     return !isGrammaticalFormOfGloss(m) || m.length > 64;
   });
   const useDefs = savedSenses(substantive.length ? substantive : defs);
-  const defJoined = useDefs
-    .map((d) => stripHtmlToText(d.meaning || ''))
-    .filter(Boolean)
-    .join('\n');
+  const defJoined = savedDefinition(useDefs, result.detectedLanguage);
   const tx = result.translations && result.translations[0];
   const definition = defJoined || (tx && tx.text ? String(tx.text) : '');
   const reading = formatPronunciationLine(result.pronunciations) || result.pronunciation || '';
