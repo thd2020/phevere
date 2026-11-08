@@ -3824,10 +3824,23 @@ function splitCsvLine(line: string): string[] {
 }
 
 // Offline dictionary packs
+/** Tells lookups which packs are installed, so a word cached before Webster 1913 arrived is looked up again. */
+async function syncOfflinePacks(): Promise<void> {
+  try {
+    const packs = await offlineDict.listPacks();
+    dictionaryService.setOfflinePacks(packs.map((p) => p.id));
+    if (packs.some((p) => p.id === 'cc-cedict' || /cedict/i.test(p.name || ''))) {
+      dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
+    }
+  } catch {
+    /* optional */
+  }
+}
 ipcMain.handle('offline-list-packs', async () => offlineDict.listPacks());
 ipcMain.handle('offline-list-catalog', async () => offlineDict.listCatalogStatus());
 ipcMain.handle('offline-remove-pack', async (_e, packId: string) => {
   await offlineDict.removePack(packId);
+  await syncOfflinePacks();
   return { success: true };
 });
 ipcMain.handle('offline-lookup', async (_e, headword: string, language?: string) => {
@@ -3845,6 +3858,7 @@ ipcMain.handle('offline-import-json', async () => {
   });
   if (result.canceled || !result.filePaths[0]) return { success: false, cancelled: true };
   const imported = await offlineDict.importJsonFile(result.filePaths[0]);
+  await syncOfflinePacks();
   return { success: true, ...imported };
 });
 ipcMain.handle('offline-import-cedict-file', async () => {
@@ -3859,7 +3873,7 @@ ipcMain.handle('offline-import-cedict-file', async () => {
   });
   if (result.canceled || !result.filePaths[0]) return { success: false, cancelled: true };
   const imported = await offlineDict.importCedictTextFile(result.filePaths[0]);
-  dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
+  await syncOfflinePacks();
   return { success: true, ...imported };
 });
 ipcMain.handle('offline-pack-details', async (_e, packId: string) => offlineDict.packDetails(String(packId || '')));
@@ -3869,14 +3883,12 @@ ipcMain.handle('offline-download-pack', async (e, packId: string) => {
   const imported = await offlineDict.downloadCatalogPack(id, (p) => {
     if (!sender.isDestroyed()) sender.send('offline-pack-progress', { id, ...p });
   });
-  if (imported.packId === 'cc-cedict') {
-    dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
-  }
+  await syncOfflinePacks();
   return { success: true, ...imported };
 });
 ipcMain.handle('offline-download-cedict', async () => {
   const imported = await offlineDict.downloadAndImportCedict();
-  dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
+  await syncOfflinePacks();
   return { success: true, ...imported };
 });
 
@@ -4157,14 +4169,7 @@ app.on('ready', () => {
     .then(async () => {
       log.info('main', 'Local SQLite (vocab + offline dict) ready');
       startVocabEnricher();
-      try {
-        const packs = await offlineDict.listPacks();
-        if (packs.some((p) => p.id === 'cc-cedict' || /cedict/i.test(p.name || ''))) {
-          dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
-        }
-      } catch {
-        /* optional */
-      }
+      await syncOfflinePacks();
     })
     .catch((err) => log.warn('main', 'Local DB init failed', { err: String(err) }));
   // Warm RapidOCR models in the background so Ctrl+Shift+O is responsive.

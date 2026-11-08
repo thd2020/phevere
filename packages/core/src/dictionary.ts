@@ -427,6 +427,8 @@ export class DictionaryService extends BaseService {
   // CC-CEDICT optional in-memory index
   private ccCedictData = new Map<string, string>();
   private ccCedictLoaded = false;
+  /** Installed offline packs, in the cache key: a word looked up before Webster 1913 was installed is looked up again. */
+  private offlinePacks = '';
   private sources: DictionarySource[] = [
     { name: 'Free Dictionary API', priority: 1, isAvailable: true,  enabled: true },
     { name: 'DeepL API',           priority: 2, isAvailable: false, enabled: false },
@@ -946,7 +948,7 @@ export class DictionaryService extends BaseService {
       // Switching on a Wiktionary edition must not be hidden by a result cached before it. ipa:2:
       // results cached before pronunciations were tidied (tidyPronunciations) and one language was labelled.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2|ipa:2|senses:1${editionsOn ? `|wikt:${editionsOn}` : ''}${preferEnglishEntry ? '|en-first' : ''}${hinted ? '|chosen' : ''}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2|ipa:2|senses:2${editionsOn ? `|wikt:${editionsOn}` : ''}${this.offlinePacks ? `|packs:${this.offlinePacks}` : ''}${preferEnglishEntry ? '|en-first' : ''}${hinted ? '|chosen' : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -5096,6 +5098,11 @@ export class DictionaryService extends BaseService {
       }
       return source;
     });
+  }
+
+  /** The offline packs installed now; call again after one is installed or removed. */
+  setOfflinePacks(ids: string[]): void {
+    this.offlinePacks = [...new Set(ids.filter(Boolean))].sort().join(',');
   }
 
   /** Mark SQLite CC-CEDICT (or any offline pack) as available in the Sources UI. */

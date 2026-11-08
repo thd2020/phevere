@@ -404,6 +404,12 @@ function verdictHtml(q: ReviewQuestion, state: ReviewState): string {
   // The mark says right or wrong; only a typo carries something to read, the right spelling.
   if (a.result === 'typo') return `<p class="nbv-verdict is-typo" role="status">${tHtml('notebook.review.verdict.typo')}<span class="nbv-fix">${typoFixHtml(a.typed, q.answers)}</span></p>`;
   const text = a.result === 'right' ? tHtml('notebook.review.verdict.correct') : q.kind === 'flash' ? tHtml('notebook.review.verdict.keepPractising') : tHtml('notebook.review.verdict.notQuite');
+  // A gap that takes another form than the headword ("erranded" for errand) shows the form, which
+  // the word card below does not.
+  const form = q.answers[0] || '';
+  if (a.result === 'wrong' && (q.kind === 'cloze' || q.kind === 'word-form') && form && form.toLowerCase() !== q.lemma.toLowerCase()) {
+    return `<p class="nbv-verdict is-wrong" role="status"><span class="nbv-vh">${text}</span><span class="nbv-fix">${esc(form)}</span></p>`;
+  }
   return `<p class="nbv-verdict is-${a.result} nbv-vh" role="status">${text}</p>`;
 }
 

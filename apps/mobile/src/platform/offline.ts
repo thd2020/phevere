@@ -97,6 +97,7 @@ export async function removePack(packId: string): Promise<void> {
   await sqlJsVocabDb.ready();
   await sqlJsVocabDb.runWrite(`DELETE FROM offline_entries WHERE pack_id = ?`, [packId]);
   await sqlJsVocabDb.runWrite(`DELETE FROM offline_packs WHERE id = ?`, [packId]);
+  await markInstalledPacksOnCore();
 }
 
 /** Puts a pack's rows in the notebook, replacing an older copy of the pack. */
@@ -164,7 +165,7 @@ async function writePack(
     (database) => fillPack(database, meta, entries, onProgress),
     (database) => fillPack(database, meta, entries),
   );
-  dictionaryService.markOfflinePackAvailable(meta.name === 'CC-CEDICT' ? 'CC-CEDICT' : meta.name, true);
+  await markInstalledPacksOnCore();
   onProgress?.(entries.length, entries.length);
   return { packId: meta.id, count: entries.length };
 }
@@ -278,8 +279,10 @@ export async function importUserFile(
   return importTextPack(packForFile(name, text, kind), text);
 }
 
+/** Tells lookups which packs are installed, so a word cached before a pack arrived is looked up again. */
 export async function markInstalledPacksOnCore(): Promise<void> {
   const list = await listCatalogStatus();
+  dictionaryService.setOfflinePacks(list.filter((p) => p.installed).map((p) => p.id));
   for (const pack of list.filter((p) => p.installed)) {
     dictionaryService.markOfflinePackAvailable(pack.id === 'cc-cedict' ? 'CC-CEDICT' : pack.name, true);
   }

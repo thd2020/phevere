@@ -137,6 +137,12 @@ const now = new Date(2026, 10, 3, 10, 0, 0).getTime();
     form: 'ignored',
   });
   assert.equal(core.clozeFrom({ lemma: 'ignore', note: 'ignore this' }), null, 'too short to be a sentence');
+  // A saved noun is not asked as a verb form a rare sense has ("erranded", "fowling").
+  const servants = 'All the servants were on holiday or erranded out of the house. She ran three errands for her aunt.';
+  assert.equal(core.clozeFrom({ lemma: 'errand', partOfSpeech: 'noun', note: servants }).form, 'errands');
+  assert.equal(core.clozeFrom({ lemma: 'fowl', partOfSpeech: 'noun', note: 'We took our guns and went fowling.' }), null);
+  assert.equal(core.clozeFrom({ lemma: 'fowl', partOfSpeech: 'noun, verb', note: 'We took our guns and went fowling.' }).form, 'fowling');
+  assert.equal(core.clozeFrom({ lemma: 'errand', note: servants }).form, 'erranded', 'no part of speech: every form');
   assert.equal(core.checkTyped('Serendipity', ['serendipity']), 'right');
   // Duolingo's typo rule: one letter missing, extra, replaced or swapped with its neighbour, and
   // the slip must not spell another word.

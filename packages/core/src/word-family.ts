@@ -36,6 +36,8 @@ export interface WordFamilyItem {
   label?: string;
   /** No recorded use at all (a coinage such as "redundantant"): listed only under "All". */
   rare?: boolean;
+  /** Has a recorded frequency in print (rankFamilyByFrequency): a word a quiz may show in capitals. */
+  common?: boolean;
 }
 
 export interface WordFamilyGroup {
@@ -640,7 +642,7 @@ export function rankFamilyByFrequency(
       return { it, i, f, tier: rare ? 2 : f && !name ? 0 : 1 };
     });
     indexed.sort((a, b) => a.tier - b.tier || b.f - a.f || a.i - b.i);
-    return { ...g, items: indexed.map(({ it, tier }) => (tier === 2 ? { ...it, rare: true } : it)) };
+    return { ...g, items: indexed.map(({ it, tier }) => (tier === 2 ? { ...it, rare: true } : tier === 0 ? { ...it, common: true } : it)) };
   });
 }
 
