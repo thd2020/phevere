@@ -155,14 +155,19 @@ export function antonymsFromResult(result: DictionaryResult | null): string[] {
   return out.slice(0, 6);
 }
 
-/** Single words of the entry's family (derived words, the base, related forms), for word-formation questions. */
+/**
+ * Single words of the entry's family (derived words, the base, related forms), for word-formation
+ * questions: derived and related words only with a recorded use in print, so a quiz never prints
+ * a coinage such as "errandy" in capitals. A lookup that has no frequencies yet gives none of them.
+ */
 export function familyFromResult(result: DictionaryResult | null): string[] {
   const out: string[] = [];
   for (const g of result?.wordFamily || []) {
     if (g.relation !== 'derived' && g.relation !== 'lemma' && g.relation !== 'related') continue;
     for (const item of g.items || []) {
       const w = String(item.word || '').trim();
-      if (w && !item.rare && /^\p{L}+$/u.test(w) && !out.includes(w)) out.push(w);
+      // The base of a form is a real word; derived and related words need a recorded use.
+      if (w && (g.relation === 'lemma' || item.common) && /^\p{L}+$/u.test(w) && !out.includes(w)) out.push(w);
     }
   }
   return out.slice(0, 20);

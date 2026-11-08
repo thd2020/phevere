@@ -21,6 +21,7 @@ const bundle = esbuild.buildSync({
       export * from './src/pronounce-once';
       export { reviewHtml, typedPlaceholder } from './src/notebook-review';
       export { skillFor } from './src/answer-history';
+      export { familyFromResult } from './src/vocab-payload';
     `,
     resolveDir: path.join(root, 'packages', 'core'),
     loader: 'ts',
@@ -134,6 +135,9 @@ const now = new Date(2026, 10, 5, 9).getTime();
   // Word formation: the sentence's gap, a relative in capitals, the form typed with no letter shown.
   assert.equal(core.familyCue('decrepit', ['decrepitude', 'decrepitly', 'decrepits', 'old']), 'decrepitly', 'the shortest relative, never an inflection');
   assert.equal(core.familyCue('run', ['runner']), '', 'too short a word to form');
+  // Only relatives with a recorded use go in capitals: never "errandy", nor any before frequencies are in.
+  const fam = (items) => ({ wordFamily: [{ relation: 'derived', items }, { relation: 'lemma', items: [{ word: 'errand' }] }] });
+  assert.deepEqual(core.familyFromResult(fam([{ word: 'errandy' }, { word: 'errands', common: true }, { word: 'errandy2', rare: true }])), ['errands', 'errand']);
   const sentence = { ...v('decrepit', 0), note: 'The old barn was decrepit and leaned to one side.', reps: 6, state: 2, stability: 30, lastReview: now - 30 * DAY, reviewDue: now };
   const formKinds = new Set();
   for (let s = 0; s < 80; s++) {
@@ -281,6 +285,14 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   assert.doesNotMatch(nearHtml, /Too easy/, 'a typo cannot be marked too easy');
   core.overrideReview(near);
   assert.equal(near.answer.grade, 1);
+
+  // A gap that takes another form than the headword shows that form after a wrong answer.
+  const gap = core.startReview([firm], 10, now);
+  gap.started = true;
+  core.ensureReviewQuestion(gap, [firm, ...pool.slice(1)], { now });
+  gap.question = { ...gap.question, kind: 'cloze', prompt: 'Ships lay in the _____.', answers: [gap.question.lemma + 's'], correct: -1 };
+  assert.equal(core.answerReview(gap, { typed: 'quayside' }, now + 2000).result, 'wrong');
+  assert.match(core.reviewHtml([firm, ...pool.slice(1)], gap, 10, { now: now + 2100 }), new RegExp('nbv-fix">' + gap.question.lemma + 's<'));
 
   // The stage tag is on every question.
   const tagState = core.startReview([firm], 10, now);

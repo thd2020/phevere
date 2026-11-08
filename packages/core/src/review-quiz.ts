@@ -579,11 +579,32 @@ function formPattern(lemma: string): RegExp {
   return new RegExp(`(?<!\\p{L})${escRe(base)}${tail}(?:e|s|es|ed|d|ing|er|ers|est|ly)?(?!\\p{L})`, 'giu');
 }
 
+/**
+ * The regular forms the saved parts of speech allow: a noun takes -s, a verb -s, -ed and -ing, an
+ * adjective or adverb none. A saved noun is never asked as a verb form its dictionary lists only
+ * for a rare sense ("erranded" for the noun "errand"). Null (every form) when the part of speech is
+ * unknown or one this does not cover.
+ */
+function formsForPos(lemma: string, pos: unknown): string[] | null {
+  const parts = clean(pos).toLowerCase().split(/[\s,;/]+/).map((p) => normPos(p)).filter(Boolean);
+  if (!parts.length) return null;
+  const slots = regularFormSlots(lemma);
+  if (!slots) return null;
+  const out = new Set<string>();
+  for (const p of parts) {
+    if (p === 'noun') out.add(slots.s);
+    else if (p === 'verb') [slots.s, slots.ed, slots.ing].forEach((f) => out.add(f));
+    else if (p !== 'adjective' && p !== 'adverb') return null;
+  }
+  out.delete(clean(lemma).toLowerCase());
+  return [...out];
+}
+
 /** The word and its regular inflections in running text, for gap-fill questions (not leader for lead). */
-function clozePattern(lemma: string): RegExp {
+function clozePattern(lemma: string, pos?: unknown): RegExp {
   const low = lemma.toLowerCase();
   if (!isLatin(low) || /\s/.test(low)) return new RegExp(escRe(low), 'gi');
-  const forms = [low, ...regularForms(low)].sort((a, b) => b.length - a.length).map(escRe);
+  const forms = [low, ...(formsForPos(low, pos) ?? regularForms(low))].sort((a, b) => b.length - a.length).map(escRe);
   return new RegExp(`(?<!\\p{L})(?:${forms.join('|')})(?!\\p{L})`, 'giu');
 }
 
@@ -819,13 +840,13 @@ function normPos(pos: unknown): string {
 }
 
 /** A sentence that uses the word, with the word blanked out and the form it took there. */
-export function clozeFromSentences(lemma: string, sentences: string[]): { sentence: string; form: string } | null {
+export function clozeFromSentences(lemma: string, sentences: string[], pos?: unknown): { sentence: string; form: string } | null {
   if (!lemma) return null;
   for (const block of sentences) {
     for (const raw of clean(block).split(/(?<=[.!?。！？])\s*|\n+/)) {
       const sentence = raw.trim().replace(/^[“"‘']|[”"’']$/g, '');
       if (!sentence || sentence.length > 220) continue;
-      const re = clozePattern(lemma);
+      const re = clozePattern(lemma, pos);
       const m = re.exec(sentence);
       if (!m) continue;
       const rest = sentence.replace(m[0], ' ').trim();
@@ -844,7 +865,7 @@ export function clozeFromSentences(lemma: string, sentences: string[]): { senten
 export function clozeFrom(e: NotebookEntry, examples: string[] = []): { sentence: string; form: string } | null {
   const lemma = clean(e.lemma);
   const own = [clean(e.note), clean(e.context?.sentence).replace(/^…|…$/g, '')].filter(Boolean);
-  return clozeFromSentences(lemma, [...own, ...examples]);
+  return clozeFromSentences(lemma, [...own, ...examples], e.partOfSpeech);
 }
 
 /* ----------------------------------------------------------- distractors */
