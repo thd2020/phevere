@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.3.3] - 2026-11-08
 
+### Changed
+
+- Now-playing lookup key (2026-11-09): looking up what is playing moves from Ctrl+Shift+P to Ctrl+Alt+Shift+P, the same family as the cycle and trigger keys. VS Code, Cursor, byndery and other editors open their command list with Ctrl+Shift+P, and Phevere's global shortcut took that key from all of them. Settings → Shortcuts now lists it with the scan and hover keys, so you can set your own. Windows and Linux.
+
 ### Fixed
 
+- Selecting text in a terminal (2026-11-09): when Phevere could not read a selection through accessibility, it pressed Ctrl+C to copy it. In a terminal, Ctrl+C with nothing selected stops the running program, and a drag in a program that uses the mouse selects nothing. Phevere now presses Ctrl+Insert in terminals instead, the copy key Windows Terminal, the classic console and mintty bind, which never interrupts. Phevere recognises Windows Terminal, the classic console, Git Bash's mintty, PuTTY, ConEmu and WezTerm by their windows, and terminals built on xterm.js, such as VS Code's, Cursor's and byndery's, by the terminal's own input field. In a terminal with no Ctrl+Insert copy, such as VS Code's, a selection Phevere cannot read is skipped. Windows only.
 - One sense, one line (2026-11-08): two dictionaries' wordings of one sense now fold into one, with both named as its source. They fold when every content word of the shorter sense is in the longer one and the longer adds at most a fifth more, such as a qualifier one dictionary puts in brackets and another writes out ("unabridged" listed "(of a book or document) Not abridged…" and "Of a book or document, not abridged…" as two senses). Senses that differ in one content word ("measuring temperature", "measuring pressure"), where one is a much narrower case of the other, or where only one has a "not", stay apart; before, two senses could merge on shared small words alone. Saved words are folded the same way once, and so is a word synced from a device on an older version.
 - Saved words stay tidy (2026-11-08): on the computer, the background refresh of saved words put a space wherever a link had ended ("a reference work .", "not abridged , shortened"), undoing the tidy of 4.3.2 on the next start. It now joins the text as the lookup shows it, and words already saved are tidied again, including ones saved with no language.
 - A new offline dictionary shows up at once (2026-11-08): a word looked up before you installed Webster 1913 or another pack kept showing its old result until the cached lookup expired. Installing or removing a pack now makes each word look itself up again, on the computer and on the phone.

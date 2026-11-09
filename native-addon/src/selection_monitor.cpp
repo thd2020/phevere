@@ -9,7 +9,10 @@
  *      bounded Document/TextPattern search (AXManualAccessibility + text-markers)
  *   3. skipped — no Apple Events analog; macOS only uses AppleScript for
  *      Safari/Chrome-family, not Electron editors such as Cursor
- *   5. Silent Ctrl+C + clipboard restore (last resort)
+ *   5. Silent copy keystroke + clipboard restore (last resort). Terminals
+ *      get Ctrl+Insert instead of Ctrl+C: in a terminal Ctrl+C with nothing
+ *      selected interrupts the running program, and Ctrl+Insert is the copy
+ *      key Windows Terminal, conhost and mintty bind that never does.
  *
  * Env: PHEVERE_DEBUG_UIA=1  PHEVERE_DISABLE_INPUT_GATE=1
  */
@@ -108,7 +111,9 @@ private:
     static long long nowMs();
     static bool isUserSelectionGesture();
     
-    void triggerSyntheticCopyFallback(int x, int y, uint64_t gen);
+    void triggerSyntheticCopyFallback(int x, int y, uint64_t gen, bool terminal);
+    static bool isTerminalWindow(HWND hwnd);
+    static bool isXtermElement(IUIAutomationElement* element, IUIAutomation* uia);
     void runCaptureChain(int x, int y, uint64_t gen);
     static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
@@ -844,13 +849,14 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
     DWORD pid = 0;
     if (hwnd) GetWindowThreadProcessId(hwnd, &pid);
     const bool ownProcess = pid == GetCurrentProcessId();
+    bool terminal = isTerminalWindow(hwnd);
 
     const HRESULT ci = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool uninit = (ci == S_OK);
     if (FAILED(ci) && ci != S_FALSE) {
         if (!ownProcess) {
-            if (debugEnabled) std::cout << "[UIA] chain: COM init failed, going to Ctrl+C" << std::endl;
-            triggerSyntheticCopyFallback(x, y, gen);
+            if (debugEnabled) std::cout << "[UIA] chain: COM init failed, going to the copy fallback" << std::endl;
+            triggerSyntheticCopyFallback(x, y, gen, terminal);
         }
         return;
     }
@@ -925,6 +931,10 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
                                     std::cout << "[UIA] step5 skip: own process (no Ctrl+C)" << std::endl;
                                 }
                             } else {
+                                // xterm.js terminals (VS Code, Cursor, byndery, Tabby, Hyper)
+                                // live in ordinary Chromium windows; their focused
+                                // element gives them away.
+                                if (!terminal && focusedAgain && isXtermElement(focusedAgain, uia)) terminal = true;
                                 goStep5 = true;
                             }
                         }
@@ -937,12 +947,53 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
     if (uninit) CoUninitialize();
 
     if (goStep5 && stillCurrent() && !ownProcess) {
-        if (debugEnabled) std::cout << "[UIA] step5 silent Ctrl+C" << std::endl;
-        triggerSyntheticCopyFallback(x, y, gen);
+        if (debugEnabled) std::cout << (terminal ? "[UIA] step5 silent Ctrl+Insert (terminal)" : "[UIA] step5 silent Ctrl+C") << std::endl;
+        triggerSyntheticCopyFallback(x, y, gen, terminal);
     }
 }
 
-void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y, uint64_t gen) {
+// Top-level window classes of native terminals.
+bool UIAutomationSelectionMonitor::isTerminalWindow(HWND hwnd) {
+    if (!hwnd) return false;
+    HWND root = GetAncestor(hwnd, GA_ROOT);
+    if (!root) root = hwnd;
+    wchar_t cls[128] = {0};
+    if (!GetClassNameW(root, cls, 128)) return false;
+    static const wchar_t* kTerminalClasses[] = {
+        L"ConsoleWindowClass",               // conhost
+        L"CASCADIA_HOSTING_WINDOW_CLASS",    // Windows Terminal
+        L"PseudoConsoleWindow",
+        L"mintty",                           // Git Bash, MSYS2, Cygwin
+        L"PuTTY",
+        L"VirtualConsoleClass",              // ConEmu, Cmder
+        L"org.wezfurlong.wezterm",
+    };
+    for (const wchar_t* c : kTerminalClasses) {
+        if (_wcsicmp(cls, c) == 0) return true;
+    }
+    return false;
+}
+
+// The element or one of its close ancestors carries an xterm.js class
+// (xterm-helper-textarea, xterm-screen, xterm). Chromium reports an HTML
+// element's class attribute as its UIA ClassName.
+bool UIAutomationSelectionMonitor::isXtermElement(IUIAutomationElement* element, IUIAutomation* uia) {
+    if (!element || !uia) return false;
+    CComPtr<IUIAutomationTreeWalker> walker;
+    uia->get_ControlViewWalker(&walker);
+    CComPtr<IUIAutomationElement> cur = element;
+    for (int i = 0; i < 4 && cur; i++) {
+        CComBSTR cls;
+        if (SUCCEEDED(cur->get_CurrentClassName(&cls)) && cls && wcsstr(cls, L"xterm")) return true;
+        if (!walker) break;
+        CComPtr<IUIAutomationElement> parent;
+        if (FAILED(walker->GetParentElement(cur, &parent))) break;
+        cur = parent;
+    }
+    return false;
+}
+
+void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y, uint64_t gen, bool terminal) {
     if (capture_gen.load() != gen) return;
 
     auto elapsedSinceUia = nowMs() - lastUiaEventTime.load();
@@ -952,7 +1003,7 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y, ui
         return;
     }
 
-    if (debugEnabled) std::cout << "[FALLBACK] SendInput Ctrl+C" << std::endl;
+    if (debugEnabled) std::cout << (terminal ? "[FALLBACK] SendInput Ctrl+Insert" : "[FALLBACK] SendInput Ctrl+C") << std::endl;
 
     const DWORD clipboardSeqBefore = GetClipboardSequenceNumber();
 
@@ -975,10 +1026,13 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y, ui
         input.ki.wScan = static_cast<WORD>(MapVirtualKey(vk, MAPVK_VK_TO_VSC));
         input.ki.dwFlags = flags;
     };
+    // Insert is an extended key; without the flag it reads as numpad 0.
+    const WORD copyKey = terminal ? static_cast<WORD>(VK_INSERT) : static_cast<WORD>('C');
+    const DWORD extended = terminal ? KEYEVENTF_EXTENDEDKEY : 0;
     INPUT inputs[4] = {};
     fillKeyEvent(inputs[0], VK_CONTROL, 0);
-    fillKeyEvent(inputs[1], static_cast<WORD>('C'), 0);
-    fillKeyEvent(inputs[2], static_cast<WORD>('C'), KEYEVENTF_KEYUP);
+    fillKeyEvent(inputs[1], copyKey, extended);
+    fillKeyEvent(inputs[2], copyKey, extended | KEYEVENTF_KEYUP);
     fillKeyEvent(inputs[3], VK_CONTROL, KEYEVENTF_KEYUP);
 
     SendInput(4, inputs, sizeof(INPUT));
