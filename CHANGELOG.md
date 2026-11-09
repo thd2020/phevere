@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.3.3] - 2026-11-08
 
+### Changed
+
+- Now-playing lookup key (2026-11-09): looking up what is playing moves from Ctrl+Shift+P to Ctrl+Alt+Shift+P, the same family as the cycle and trigger keys. VS Code, Cursor, byndery and other editors open their command list with Ctrl+Shift+P, and Phevere's global shortcut took that key from all of them. Settings → Shortcuts now lists it with the scan and hover keys, so you can set your own. Windows and Linux.
+
 ### Fixed
 
 - Selecting text in a terminal (2026-11-09): when Phevere could not read a selection through accessibility, it pressed Ctrl+C to copy it. In a terminal, Ctrl+C with nothing selected stops the running program, and a drag in a program that uses the mouse selects nothing. Phevere now presses Ctrl+Insert in terminals instead, the copy key Windows Terminal, the classic console and mintty bind, which never interrupts. Phevere recognises Windows Terminal, the classic console, Git Bash's mintty, PuTTY, ConEmu and WezTerm by their windows, and terminals built on xterm.js, such as VS Code's, Cursor's and byndery's, by the terminal's own input field. In a terminal with no Ctrl+Insert copy, such as VS Code's, a selection Phevere cannot read is skipped. Windows only.

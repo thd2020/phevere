@@ -312,6 +312,12 @@ function initializeSettingsWindow() {
                   <input type="text" id="hover-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-hover-shortcut" />
                   <button type="button" class="sv-btn" id="hover-shortcut-set">${tHtml('desktop.settings.shortcuts.set')}</button>
                 </div>
+                <div class="sv-row sv-row--keys">
+                  <span class="sv-row__text"><span id="label-media-shortcut" class="sv-row__label">${tHtml('desktop.settings.shortcuts.lookUpNowPlaying')}</span></span>
+                  <div class="sv-keycaps sv-keyfield" id="media-shortcut-keys"></div>
+                  <input type="text" id="media-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-media-shortcut" />
+                  <button type="button" class="sv-btn" id="media-shortcut-set">${tHtml('desktop.settings.shortcuts.set')}</button>
+                </div>
                 <div class="sv-ledger__foot">
                   <span id="monitor-shortcuts-status" class="sv-actions__status" role="status" aria-live="polite"></span>
                   <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">${tHtml('common.save')}</button>
@@ -322,7 +328,6 @@ function initializeSettingsWindow() {
                 <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">${tHtml('desktop.settings.shortcuts.scanUnderPointer')}</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+G"></span></li>
                 <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">${tHtml('desktop.settings.shortcuts.scanActiveWindow')}</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+W"></span></li>
                 <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">${tHtml('desktop.settings.shortcuts.scanClipboardImage')}</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+I"></span></li>
-                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">${tHtml('desktop.settings.shortcuts.lookUpNowPlaying')}</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+P"></span></li>
               </ul>
               <div id="qt-section" class="sv-section" hidden>
                 <header class="sv-head"><h3 class="sv-head__title">${tHtml('desktop.settings.quickTranslation.title')}</h3></header>
@@ -1325,6 +1330,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
       triggerShortcut: string;
       ocrShortcut?: string;
       hoverShortcut?: string;
+      mediaShortcut?: string;
       hoverEnabled?: boolean;
     }>;
     setMonitorShortcuts?: (p: {
@@ -1332,6 +1338,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
       triggerShortcut: string;
       ocrShortcut?: string;
       hoverShortcut?: string;
+      mediaShortcut?: string;
       hoverEnabled?: boolean;
     }) => Promise<{ success: boolean; error?: string }>;
   };
@@ -1342,6 +1349,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   const triggerEl = document.getElementById('monitor-trigger-shortcut') as HTMLInputElement | null;
   const ocrEl = document.getElementById('ocr-shortcut') as HTMLInputElement | null;
   const hoverEl = document.getElementById('hover-shortcut') as HTMLInputElement | null;
+  const mediaEl = document.getElementById('media-shortcut') as HTMLInputElement | null;
   const hoverToggle = document.getElementById('enable-hover') as HTMLInputElement | null;
   const rememberToggle = document.getElementById('remember-sources') as HTMLInputElement | null;
   rememberToggle?.addEventListener('change', () => {
@@ -1356,12 +1364,13 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   const triggerSetBtn = document.getElementById('monitor-trigger-set') as HTMLButtonElement | null;
   const ocrSetBtn = document.getElementById('ocr-shortcut-set') as HTMLButtonElement | null;
   const hoverSetBtn = document.getElementById('hover-shortcut-set') as HTMLButtonElement | null;
+  const mediaSetBtn = document.getElementById('media-shortcut-set') as HTMLButtonElement | null;
   const qtReplaceEl = document.getElementById('qt-replace') as HTMLInputElement | null;
   const qtPanelEl = document.getElementById('qt-panel') as HTMLInputElement | null;
   const qtReplaceSetBtn = document.getElementById('qt-replace-set') as HTMLButtonElement | null;
   const qtPanelSetBtn = document.getElementById('qt-panel-set') as HTMLButtonElement | null;
 
-  const setBtns = [cycleSetBtn, triggerSetBtn, ocrSetBtn, hoverSetBtn, qtReplaceSetBtn, qtPanelSetBtn].filter(Boolean) as HTMLButtonElement[];
+  const setBtns = [cycleSetBtn, triggerSetBtn, ocrSetBtn, hoverSetBtn, mediaSetBtn, qtReplaceSetBtn, qtPanelSetBtn].filter(Boolean) as HTMLButtonElement[];
   let cancelCapture: (() => void) | null = null;
 
   function stopCaptureUi(): void {
@@ -1407,6 +1416,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   if (triggerEl && triggerSetBtn) bindCapture(triggerEl, triggerSetBtn);
   if (ocrEl && ocrSetBtn) bindCapture(ocrEl, ocrSetBtn);
   if (hoverEl && hoverSetBtn) bindCapture(hoverEl, hoverSetBtn);
+  if (mediaEl && mediaSetBtn) bindCapture(mediaEl, mediaSetBtn);
   void wireQuickTranslateSettings(qtReplaceEl, qtPanelEl, (input, btn, onSet) => bindCapture(input, btn, onSet), [qtReplaceSetBtn, qtPanelSetBtn]);
 
   try {
@@ -1415,6 +1425,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
     if (triggerEl) triggerEl.value = st.triggerShortcut || '';
     if (ocrEl) ocrEl.value = st.ocrShortcut || 'CommandOrControl+Shift+O';
     if (hoverEl) hoverEl.value = st.hoverShortcut || 'CommandOrControl+Shift+H';
+    if (mediaEl) mediaEl.value = st.mediaShortcut || 'CommandOrControl+Alt+Shift+P';
     if (hoverToggle) hoverToggle.checked = st.hoverEnabled !== false;
     if (rememberToggle) rememberToggle.checked = (st as { rememberSources?: boolean }).rememberSources !== false;
     if (lookupOpensSelect) lookupOpensSelect.value = (st as { lookupOpens?: string }).lookupOpens === 'panel' ? 'panel' : 'strip';
@@ -1422,6 +1433,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
     if (triggerEl) paintShortcutKeycaps(triggerEl);
     if (ocrEl) paintShortcutKeycaps(ocrEl);
     if (hoverEl) paintShortcutKeycaps(hoverEl);
+    if (mediaEl) paintShortcutKeycaps(mediaEl);
   } catch {
     /* ignore */
   }
@@ -1437,6 +1449,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
       triggerShortcut: triggerEl.value.trim(),
       ocrShortcut: ocrEl.value.trim(),
       hoverShortcut: hoverEl.value.trim(),
+      mediaShortcut: mediaEl?.value.trim() || undefined,
       hoverEnabled: hoverToggle ? hoverToggle.checked : true,
     });
     statusEl.textContent = r.success ? t('desktop.settings.shortcuts.saved') : (r.error || t('desktop.settings.shortcuts.saveFailed'));
@@ -1450,6 +1463,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
       triggerShortcut: triggerEl.value.trim(),
       ocrShortcut: ocrEl.value.trim(),
       hoverShortcut: hoverEl.value.trim(),
+      mediaShortcut: mediaEl?.value.trim() || undefined,
       hoverEnabled: hoverToggle.checked,
     });
   });

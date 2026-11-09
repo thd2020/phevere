@@ -685,7 +685,7 @@ function syncFixedAppShortcuts(): void {
   );
 
   registeredMediaAccelerator = registerOrWarn(
-    'CommandOrControl+Shift+P',
+    monitorSettings.mediaShortcut,
     () => void lookupNowPlaying(),
     'media',
   );
@@ -895,7 +895,7 @@ ipcMain.handle('quick-translate-set', (_e, patch: Partial<QuickTranslatePrefs>) 
   if (next.enabled) {
     const replace = (next.replaceShortcut || '').trim();
     const panel = (next.panelShortcut || '').trim();
-    const taken = [monitorSettings.cycleShortcut, monitorSettings.triggerShortcut, monitorSettings.ocrShortcut, monitorSettings.hoverShortcut];
+    const taken = [monitorSettings.cycleShortcut, monitorSettings.triggerShortcut, monitorSettings.ocrShortcut, monitorSettings.hoverShortcut, monitorSettings.mediaShortcut];
     if (!replace || !panel || replace === panel || taken.includes(replace) || taken.includes(panel)) {
       return { success: false, error: t('main.shortcuts.mustDiffer'), prefs: quickPrefs };
     }
@@ -1196,7 +1196,7 @@ function buildTrayContextMenu(): Electron.Menu {
     },
     {
       label: t('main.tray.lookUpNowPlaying'),
-      accelerator: 'CommandOrControl+Shift+P',
+      accelerator: monitorSettings.mediaShortcut,
       click: () => void lookupNowPlaying(),
     },
     {
@@ -2856,6 +2856,7 @@ ipcMain.handle('monitor-get-state', () => {
     hoverEnabled: monitorSettings.hoverEnabled,
     ocrShortcut: monitorSettings.ocrShortcut,
     hoverShortcut: monitorSettings.hoverShortcut,
+    mediaShortcut: monitorSettings.mediaShortcut,
     rememberSources: monitorSettings.rememberSources,
     lookupOpens: monitorSettings.lookupOpens,
   };
@@ -2916,6 +2917,7 @@ ipcMain.handle(
       triggerShortcut: string;
       ocrShortcut?: string;
       hoverShortcut?: string;
+      mediaShortcut?: string;
       hoverEnabled?: boolean;
     },
   ) => {
@@ -2923,10 +2925,11 @@ ipcMain.handle(
     const trigger = (payload?.triggerShortcut || '').trim();
     const ocr = (payload?.ocrShortcut || monitorSettings.ocrShortcut).trim();
     const hover = (payload?.hoverShortcut || monitorSettings.hoverShortcut).trim();
-    if (!cycle || !trigger || !ocr || !hover) {
+    const media = (payload?.mediaShortcut || monitorSettings.mediaShortcut).trim();
+    if (!cycle || !trigger || !ocr || !hover || !media) {
       return { success: false, error: t('main.shortcuts.allRequired') };
     }
-    const all = [cycle, trigger, ocr, hover];
+    const all = [cycle, trigger, ocr, hover, media];
     if (new Set(all).size !== all.length) {
       return { success: false, error: t('main.shortcuts.mustDiffer') };
     }
@@ -2934,7 +2937,8 @@ ipcMain.handle(
       !tryRegisterAccelerator(cycle) ||
       !tryRegisterAccelerator(trigger) ||
       !tryRegisterAccelerator(ocr) ||
-      !tryRegisterAccelerator(hover)
+      !tryRegisterAccelerator(hover) ||
+      !tryRegisterAccelerator(media)
     ) {
       return {
         success: false,
@@ -2947,6 +2951,7 @@ ipcMain.handle(
         triggerShortcut: trigger,
         ocrShortcut: ocr,
         hoverShortcut: hover,
+        mediaShortcut: media,
         hoverEnabled:
           typeof payload?.hoverEnabled === 'boolean' ? payload.hoverEnabled : monitorSettings.hoverEnabled,
       },

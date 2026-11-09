@@ -244,6 +244,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hoverEnabled?: boolean;
     ocrShortcut?: string;
     hoverShortcut?: string;
+    mediaShortcut?: string;
     rememberSources?: boolean;
     lookupOpens?: 'strip' | 'panel';
   }> => {
@@ -267,6 +268,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       triggerShortcut: string;
       ocrShortcut?: string;
       hoverShortcut?: string;
+      mediaShortcut?: string;
       hoverEnabled?: boolean;
     },
   ): Promise<{ success: boolean; error?: string }> => {
@@ -682,6 +684,7 @@ declare global {
         hoverEnabled?: boolean;
         ocrShortcut?: string;
         hoverShortcut?: string;
+        mediaShortcut?: string;
         rememberSources?: boolean;
         lookupOpens?: 'strip' | 'panel';
       }>;
@@ -694,6 +697,7 @@ declare global {
         triggerShortcut: string;
         ocrShortcut?: string;
         hoverShortcut?: string;
+        mediaShortcut?: string;
         hoverEnabled?: boolean;
       }) => Promise<{ success: boolean; error?: string }>;
       setHoverEnabled?: (enabled: boolean) => Promise<{ success: boolean; hoverEnabled?: boolean }>;

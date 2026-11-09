@@ -21,7 +21,7 @@ Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `sr
 | Scan under pointer | Small rect OCR at cursor | Ctrl+Shift+G |
 | Scan active window | Foreground HWND bounds → OCR | Ctrl+Shift+W |
 | Clipboard image | Win+Shift+S / copy image → OCR | Ctrl+Shift+I |
-| Now playing | Windows SMTC media session | Ctrl+Shift+P |
+| Now playing | Windows SMTC media session | Ctrl+Alt+Shift+P (Settings → Shortcuts) |
 | Translate and replace | Synthetic copy, translate, synthetic paste; clipboard restored | **editable**, off by default (default Ctrl+Alt+T) |
 | Choose a translation | Same copy, then a panel of every engine; Enter pastes | **editable**, off by default (default Ctrl+Alt+Shift+T) |
 
@@ -110,7 +110,7 @@ This interface is also the target for the **macOS AX draft** (`docs/MACOS_SELECT
 
 ### Phase 5 — Media sessions
 
-- [x] Windows: `GlobalSystemMediaTransportControlsSessionManager` via `scripts/media_now_playing.ps1` (`Ctrl+Shift+P`)
+- [x] Windows: `GlobalSystemMediaTransportControlsSessionManager` via `scripts/media_now_playing.ps1` (`Ctrl+Alt+Shift+P`, set in Settings → Shortcuts)
 - [x] macOS: Music.app / Spotify via `scripts/media_now_playing.applescript` (`⌘⇧P`). Browser sessions need private MediaRemote (blocked in app bundles on 15.4+)
 - [ ] Linux: MPRIS / D-Bus  
 Solves Spotify-class apps with clean strings and no OCR.

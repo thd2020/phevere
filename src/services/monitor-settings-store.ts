@@ -17,6 +17,8 @@ export interface MonitorSettings {
   ocrShortcut: string;
   /** Toggle hover lookup. */
   hoverShortcut: string;
+  /** Look up what is playing (Windows media session). */
+  mediaShortcut: string;
   /** Keep the app, page or document and sentence with each saved word (source-capture.ts). */
   rememberSources: boolean;
   /** The icon strip first (expand it for the lookup), or the full pop-up straight away. */
@@ -33,6 +35,8 @@ export const monitorDefaults: MonitorSettings = {
   hoverEnabled: true,
   ocrShortcut: 'CommandOrControl+Shift+O',
   hoverShortcut: 'CommandOrControl+Shift+H',
+  /** Not Ctrl+Shift+P: VS Code, byndery and other editors open their command list with it. */
+  mediaShortcut: 'CommandOrControl+Alt+Shift+P',
   rememberSources: true,
   lookupOpens: 'strip',
 };
@@ -68,6 +72,7 @@ export function loadMonitorSettings(): MonitorSettings {
       hoverEnabled: typeof data.hoverEnabled === 'boolean' ? data.hoverEnabled : monitorDefaults.hoverEnabled,
       ocrShortcut: pickShortcut(data.ocrShortcut, monitorDefaults.ocrShortcut),
       hoverShortcut: pickShortcut(data.hoverShortcut, monitorDefaults.hoverShortcut),
+      mediaShortcut: pickShortcut(data.mediaShortcut, monitorDefaults.mediaShortcut),
       rememberSources: typeof data.rememberSources === 'boolean' ? data.rememberSources : monitorDefaults.rememberSources,
       lookupOpens: pickLookupOpens(data.lookupOpens, monitorDefaults.lookupOpens),
     };
@@ -93,6 +98,7 @@ export function mergeMonitorSettings(partial: Partial<MonitorSettings>, current:
     hoverEnabled: partial.hoverEnabled !== undefined ? partial.hoverEnabled : current.hoverEnabled,
     ocrShortcut: partial.ocrShortcut !== undefined ? partial.ocrShortcut : current.ocrShortcut,
     hoverShortcut: partial.hoverShortcut !== undefined ? partial.hoverShortcut : current.hoverShortcut,
+    mediaShortcut: partial.mediaShortcut !== undefined ? partial.mediaShortcut : current.mediaShortcut,
     rememberSources: partial.rememberSources !== undefined ? partial.rememberSources : current.rememberSources,
     lookupOpens: pickLookupOpens(partial.lookupOpens, current.lookupOpens),
   };
