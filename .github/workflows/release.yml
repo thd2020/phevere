@@ -137,7 +137,7 @@ jobs:
         shell: pwsh
         run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           files: |
@@ -236,7 +236,7 @@ jobs:
         shell: pwsh
         run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           files: |
@@ -303,7 +303,7 @@ jobs:
         shell: pwsh
         run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           files: ${{ steps.pkg.outputs.dmg }}
@@ -399,7 +399,7 @@ jobs:
             ASSET="$(basename "$f").sha256" pwsh ./scripts/gh-delete-release-asset.ps1
           done <<< "$FILES"
       - name: Upload GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           files: |
@@ -598,7 +598,7 @@ jobs:
         shell: pwsh
         run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           files: |
@@ -682,7 +682,7 @@ jobs:
         shell: pwsh
         run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           files: ${{ steps.pkg.outputs.file }}
