@@ -682,6 +682,51 @@ const countdownChecks = async () => {
   assert.deepEqual(states, ['loading', 'finding', 'ready']);
 
   simulate();
+
+  // Synonyms & antonyms leave Stage 1, cap at 10% of a session, and pick familiar words once ranked.
+  assert.ok(!core.STAGE_KINDS[1].includes('synonym-choice'), 'stage 1 excludes synonym-choice');
+  assert.equal(core.synonymAllowed([]), true, 'single-question check allowed');
+  assert.equal(core.synonymAllowed(['synonym-choice']), false, 'second in a short session waits for 10% cap');
+  assert.equal(core.synonymAllowed(['synonym-choice', ...Array(18).fill('word-choice')]), true, '20th question may be the second (10%)');
+  assert.equal(core.synonymAllowed(['synonym-choice', 'antonym-choice', ...Array(18).fill('word-choice')]), false, 'combined cap prevents a third');
+
+  core.registerCommonWords(['simple', 'clear', 'bright', 'quick', 'calm', 'firm']);
+  assert.equal(core.pickSynonym('obscure', ['syndesis', 'neurocyte', 'clear']), 'clear', 'skips obscure words for a common synonym');
+  assert.equal(core.pickSynonym('obscure', ['syndesis', 'neurocyte']), '', 'returns empty when all synonyms are obscure');
+
+  const mk = (lemma, extra = {}) => ({
+    id: lemma, lemma, partOfSpeech: 'adjective', sourceLang: 'en', definition: `meaning of ${lemma}`,
+    createdAt: now - 60 * DAY, reps: 4, state: 2, stability: 25, lastReview: now - 25 * DAY, reviewDue: now, ...extra,
+  });
+  const target = mk('lucid');
+  const familiarPool = [
+    target,
+    mk('simple'),
+    mk('bright'),
+    mk('quick'),
+    mk('calm'),
+    mk('syndesis', { reps: 0, state: 0, stability: 0 }),
+    mk('neuroglia', { reps: 0, state: 0, stability: 0 }),
+    mk('fuga', { reps: 0, state: 0, stability: 0 }),
+  ];
+  for (let s = 0; s < 40; s++) {
+    const q = core.buildQuestion(target, familiarPool, { now, synonyms: () => ['syndesis', 'clear'] }, core.seededRandom(s));
+    if (q.kind !== 'synonym-choice') continue;
+    assert.equal(q.options[q.correct], 'clear', 'picked familiar synonym as answer');
+    for (const opt of q.options) assert.ok(!['syndesis', 'neuroglia', 'fuga'].includes(opt), `no unlearned obscure distractor: ${opt}`);
+  }
+  const tooFewFamiliar = [
+    target,
+    mk('simple'),
+    mk('syndesis', { reps: 0, state: 0, stability: 0 }),
+    mk('neuroglia', { reps: 0, state: 0, stability: 0 }),
+    mk('fuga', { reps: 0, state: 0, stability: 0 }),
+  ];
+  for (let s = 0; s < 20; s++) {
+    const q = core.buildQuestion(target, tooFewFamiliar, { now, synonyms: () => ['clear'] }, core.seededRandom(s));
+    assert.notEqual(q.kind, 'synonym-choice', 'skips synonym-choice when fewer than 3 familiar lures exist');
+  }
+
   console.log('test-learn-adapt: ok');
 })().catch((e) => {
   console.error(e);

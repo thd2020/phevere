@@ -138,7 +138,8 @@ export function canAddToWordBook(result: DictionaryResult | null | undefined): b
 /** Example sentences from a lookup, for the quiz's gap-fill questions: plain text, each once, at most eight. */
 /**
  * Synonyms for a "closest in meaning" question, senses first: those listed under the entry's first
- * part of speech in dictionary order, then the entry's own list (Datamuse), up to six single words.
+ * part of speech in dictionary order, then the entry's own list (Datamuse), up to sixteen single words
+ * so common words are available alongside rare ones.
  */
 export function synonymsFromResult(result: DictionaryResult | null): string[] {
   const defs = result?.definitions || [];
@@ -150,7 +151,7 @@ export function synonymsFromResult(result: DictionaryResult | null): string[] {
   };
   for (const d of defs) if (d.partOfSpeech === pos) for (const w of d.synonyms || []) add(w);
   for (const w of result?.synonyms || []) add(w);
-  return out.slice(0, 6);
+  return out.slice(0, 16);
 }
 
 /** Antonyms for an "opposite in meaning" question, found the way `synonymsFromResult` finds synonyms. */
@@ -164,7 +165,7 @@ export function antonymsFromResult(result: DictionaryResult | null): string[] {
   };
   for (const d of defs) if (d.partOfSpeech === pos) for (const w of d.antonyms || []) add(w);
   for (const w of result?.antonyms || []) add(w);
-  return out.slice(0, 6);
+  return out.slice(0, 16);
 }
 
 /**

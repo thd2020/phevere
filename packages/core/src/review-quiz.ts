@@ -234,6 +234,8 @@ export const ROUND_WORDS = 20;
 export const LEECH_LAPSES = 4;
 /** Listening questions never pass this share of a session. */
 export const LISTEN_CAP = 0.2;
+/** Synonym and antonym questions together never pass this share of a session. */
+export const SYNONYM_CAP = 0.1;
 
 /* ------------------------------------------------------------------ queue */
 
@@ -936,7 +938,7 @@ export function pickDistractors(
  */
 export const STAGE_KINDS: Record<number, QuestionKind[]> = {
   0: ['meaning-choice', 'word-choice', 'flash'],
-  1: ['word-choice', 'cloze-choice', 'meaning-choice', 'listen-choice', 'spell-tiles', 'synonym-choice', 'recall', 'cloze', 'flash'],
+  1: ['word-choice', 'cloze-choice', 'meaning-choice', 'listen-choice', 'spell-tiles', 'recall', 'cloze', 'flash'],
   2: ['recall', 'cloze-choice', 'synonym-choice', 'antonym-choice', 'word-choice', 'cloze', 'word-form', 'spell-tiles', 'listen-type', 'listen-choice', 'meaning-choice', 'flash'],
   3: ['cloze', 'word-form', 'recall', 'synonym-choice', 'antonym-choice', 'listen-type', 'cloze-choice', 'word-choice', 'meaning-choice', 'flash'],
 };
@@ -1129,6 +1131,13 @@ export function listeningAllowed(asked: QuestionKind[]): boolean {
   return listened + 1 <= LISTEN_CAP * (asked.length + 1) + 1e-9;
 }
 
+/** Whether one more synonym or antonym question keeps them within SYNONYM_CAP of the session. */
+export function synonymAllowed(asked: QuestionKind[]): boolean {
+  if (!asked.length) return true;
+  const used = asked.filter((k) => k === 'synonym-choice' || k === 'antonym-choice').length;
+  return used + 1 <= Math.max(1, Math.floor((asked.length + 1) * SYNONYM_CAP + 1e-9));
+}
+
 const STAGE_OF: Record<Maturity, number> = { new: 0, learning: 1, relearning: 1, young: 2, mature: 3 };
 
 /**
@@ -1164,6 +1173,7 @@ export function chooseKind(stage: number, can: Record<QuestionKind, boolean>, as
   const total = asked.length;
   const share = (skill: QuizSkill) => (total ? asked.filter((k) => KIND_SKILL[k] === skill).length / total : 0);
   const listenOk = listeningAllowed(asked);
+  const synOk = synonymAllowed(asked);
   const last = asked[asked.length - 1];
   let best: QuestionKind | null = null;
   let bestCost = Infinity;
@@ -1172,6 +1182,7 @@ export function chooseKind(stage: number, can: Record<QuestionKind, boolean>, as
   order.filter((k) => can[k]).forEach((k, i) => {
     const skill = KIND_SKILL[k];
     if (skill === 'listening' && !listenOk) return;
+    if ((k === 'synonym-choice' || k === 'antonym-choice') && !synOk) return;
     // Falling short of the aim costs twice as much as passing it: a miss sends the word back to
     // relearning, while an easy question still makes the learner retrieve the word.
     const p = choice.predict ? choice.predict(k) : 0;
@@ -1245,18 +1256,31 @@ function gapOptions(target: NotebookEntry, form: string, lures: NotebookEntry[])
 }
 
 /**
- * The synonym a "closest in meaning" question asks for: the first single word (a hyphen allowed)
- * that is not a form of the word itself, so "run" never offers "running".
+ * The synonym a "closest in meaning" question asks for: a single everyday or already-learned word
+ * (a hyphen allowed) that is not a form of the word itself, picking the most familiar candidate
+ * when common word lists are loaded, and returning '' when none is familiar.
  */
-export function pickSynonym(lemma: string, synonyms: string[]): string {
+export function pickSynonym(lemma: string, synonyms: string[], known?: Set<string>): string {
   const own = new Set(lemmaKeys(clean(lemma).toLowerCase()));
+  const valid: string[] = [];
   for (const raw of synonyms) {
     const w = clean(raw);
     if (!/^\p{L}[\p{L}'’-]*$/u.test(w)) continue;
     if (lemmaKeys(w.toLowerCase()).some((k) => own.has(k))) continue;
-    return w;
+    valid.push(w);
   }
-  return '';
+  if (!valid.length) return '';
+  if (!commonWordRank.size) return valid[0];
+  let best = '';
+  let bestRank = Infinity;
+  for (const w of valid) {
+    const rank = familiarityRank(w, known);
+    if (rank < bestRank) {
+      best = w;
+      bestRank = rank;
+    }
+  }
+  return best;
 }
 
 /** Wrong options for a synonym question: other notebook words, none of them a synonym too or the synonym's own form. */
@@ -1277,9 +1301,9 @@ function synonymLuresFor(lemma: string, synonym: string, synonyms: string[], lur
  * that is the word with a prefix ("unhappy" for "happy") is passed over, since its letters would
  * give it away.
  */
-export function pickAntonym(lemma: string, antonyms: string[]): string {
+export function pickAntonym(lemma: string, antonyms: string[], known?: Set<string>): string {
   const w = clean(lemma).toLowerCase();
-  return pickSynonym(lemma, antonyms.filter((a) => !clean(a).toLowerCase().includes(w)));
+  return pickSynonym(lemma, antonyms.filter((a) => !clean(a).toLowerCase().includes(w)), known);
 }
 
 /**
@@ -1287,9 +1311,9 @@ export function pickAntonym(lemma: string, antonyms: string[]): string {
  * last place a synonym of the word when its entry lists one, the option a learner who knows the
  * word's field but not its direction picks.
  */
-function antonymLuresFor(lemma: string, antonym: string, antonyms: string[], synonyms: string[], lures: Array<{ lemma: string } | NotebookEntry>): Array<{ word: string; lemma: string }> {
+function antonymLuresFor(lemma: string, antonym: string, antonyms: string[], synonyms: string[], lures: Array<{ lemma: string } | NotebookEntry>, known?: Set<string>): Array<{ word: string; lemma: string }> {
   const out = synonymLuresFor(lemma, antonym, [...antonyms, ...synonyms], lures);
-  const trap = pickSynonym(lemma, synonyms.filter((s) => !antonyms.some((a) => clean(a).toLowerCase() === clean(s).toLowerCase())));
+  const trap = pickSynonym(lemma, synonyms.filter((s) => !antonyms.some((a) => clean(a).toLowerCase() === clean(s).toLowerCase())), known);
   if (trap && out.length >= 2) out.splice(Math.min(out.length, 2), 1, { word: trap, lemma: trap });
   return out;
 }
@@ -1358,16 +1382,25 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
   const open = (k: QuestionKind) => kindUnlocked(k, learner) && (!TYPED_KINDS.includes(k) || typedOk);
   // The gap's options, each in the form the gap takes (`inflectLike`).
   const gapLures = cloze ? gapOptions(entry, cloze.form, wideLures) : [];
-  const synonym = pickSynonym(lemma, opts.synonyms?.(lemma) || []);
+  const knownWords = new Set(
+    pool
+      .filter((e) => e !== entry && (wordMaturity(e) === 'young' || wordMaturity(e) === 'mature'))
+      .map((e) => normalizeAnswer(e.lemma))
+      .filter(Boolean),
+  );
+  const familiarPool = commonWordRank.size
+    ? pool.filter((e) => e !== entry && familiarityRank(e.lemma, knownWords) < Infinity)
+    : pool.filter((e) => e !== entry);
+  const synonym = pickSynonym(lemma, opts.synonyms?.(lemma) || [], knownWords);
   // Wrong options look like the synonym, not like the word asked, or the one option unlike the
   // others ("impulse" among "vinyl", "vitrine", "vintage" for "vagary") would give the answer away.
   const synonymLures = synonym
-    ? synonymLuresFor(lemma, synonym, opts.synonyms?.(lemma) || [], pickDistractors({ ...entry, lemma: synonym }, pool.filter((e) => e !== entry), 'word', 12, rand))
+    ? synonymLuresFor(lemma, synonym, opts.synonyms?.(lemma) || [], pickDistractors({ ...entry, lemma: synonym }, familiarPool, 'word', 12, rand))
     : [];
   const antonymList = opts.antonyms?.(lemma) || [];
-  const antonym = pickAntonym(lemma, antonymList);
+  const antonym = pickAntonym(lemma, antonymList, knownWords);
   const antonymLures = antonym
-    ? antonymLuresFor(lemma, antonym, antonymList, opts.synonyms?.(lemma) || [], pickDistractors({ ...entry, lemma: antonym }, pool.filter((e) => e !== entry), 'word', 12, rand))
+    ? antonymLuresFor(lemma, antonym, antonymList, opts.synonyms?.(lemma) || [], pickDistractors({ ...entry, lemma: antonym }, familiarPool, 'word', 12, rand), knownWords)
     : [];
   const cue = cloze ? familyCue(lemma, opts.family?.(lemma) || [], cloze.form) : '';
   const can: Record<QuestionKind, boolean> = {
@@ -1592,6 +1625,8 @@ export function editDistance(a: string, b: string): number {
 /** Words the app knows (word books and the learner's own words), so a slip that spells one of them is not a typo. */
 const listedWords = new Set<string>();
 const listedFrom = new WeakSet<object>();
+/** Everyday vocabulary ranked by familiarity (lower = more common), populated from starter/ngsl/zhongkao/gaokao. */
+const commonWordRank = new Map<string, number>();
 
 /** Adds words to the set `checkTyped` treats as real words: the word books and the learner's own words. */
 export function registerListedWords(words: Iterable<string>): void {
@@ -1601,36 +1636,59 @@ export function registerListedWords(words: Iterable<string>): void {
   }
 }
 
+/** Records everyday words in familiarity order so synonym and antonym questions prefer plain words. */
+export function registerCommonWords(words: Iterable<string>): void {
+  for (const w of words) {
+    const n = normalizeAnswer(w);
+    if (n && !commonWordRank.has(n)) commonWordRank.set(n, commonWordRank.size);
+  }
+}
+
+function familiarityRank(word: string, known?: Set<string>): number {
+  if (!commonWordRank.size) return 0;
+  const n = normalizeAnswer(word);
+  if (!n) return Infinity;
+  const rank = commonWordRank.get(n);
+  if (rank !== undefined) return rank;
+  return known?.has(n) ? 50_000 : Infinity;
+}
+
 let listsLoading: Promise<void> | null = null;
 
 /**
  * Loads every shipped word book into the real-word set, once, so a slip that spells a common word
- * ("cat" for "cot") is not taken for a typo. Each book is its own chunk; a failed one is skipped.
+ * ("cat" for "cot") is not taken for a typo, and ranks core everyday books for synonym choices.
+ * Each book is its own chunk; a failed one is skipped.
  */
 export function loadListedWords(): Promise<void> {
   if (listsLoading) return listsLoading;
-  const books: Array<() => Promise<unknown>> = [
-    () => import('../wordbooks/starter.json'),
-    () => import('../wordbooks/zhongkao.json'),
-    () => import('../wordbooks/gaokao.json'),
-    () => import('../wordbooks/cet4.json'),
-    () => import('../wordbooks/cet6.json'),
-    () => import('../wordbooks/kaoyan.json'),
-    () => import('../wordbooks/ngsl.json'),
-    () => import('../wordbooks/nawl.json'),
-    () => import('../wordbooks/tsl.json'),
-    () => import('../wordbooks/bsl.json'),
+  const books: Array<{ commonOrder?: number; load: () => Promise<unknown> }> = [
+    { commonOrder: 0, load: () => import('../wordbooks/starter.json') },
+    { commonOrder: 2, load: () => import('../wordbooks/zhongkao.json') },
+    { commonOrder: 3, load: () => import('../wordbooks/gaokao.json') },
+    { load: () => import('../wordbooks/cet4.json') },
+    { load: () => import('../wordbooks/cet6.json') },
+    { load: () => import('../wordbooks/kaoyan.json') },
+    { commonOrder: 1, load: () => import('../wordbooks/ngsl.json') },
+    { load: () => import('../wordbooks/nawl.json') },
+    { load: () => import('../wordbooks/tsl.json') },
+    { load: () => import('../wordbooks/bsl.json') },
   ];
-  const one = async (load: () => Promise<unknown>): Promise<void> => {
+  const commonBuckets: string[][] = [[], [], [], []];
+  const one = async ({ commonOrder, load }: { commonOrder?: number; load: () => Promise<unknown> }): Promise<void> => {
     try {
       const mod = await load();
       const file = ((mod as { default?: { words?: string[] } }).default || mod) as { words?: string[] };
-      registerListedWords(file.words || []);
+      const words = file.words || [];
+      registerListedWords(words);
+      if (commonOrder !== undefined) commonBuckets[commonOrder] = words;
     } catch {
       // A book that fails to load only leaves its words out of the check.
     }
   };
-  listsLoading = Promise.all(books.map(one)).then((): void => undefined);
+  listsLoading = Promise.all(books.map(one)).then((): void => {
+    for (const bucket of commonBuckets) registerCommonWords(bucket);
+  });
   return listsLoading;
 }
 
