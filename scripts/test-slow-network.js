@@ -68,6 +68,7 @@ function app(net, opts = {}) {
   const reach = async (url, o) => {
     const state = stateOf(url);
     if (state === 'refused') throw new core.DictionaryError('Request failed: getaddrinfo ENOTFOUND', 'NETWORK_ERROR', true);
+    if (state === 'rate-limited') throw new core.DictionaryError('HTTP 429', 'HTTP_429', true);
     if (state === 'silent') {
       await new Promise((r) => setTimeout(r, (o && o.timeoutMs) || 8000));
       throw new core.DictionaryError('Request failed: timed out', 'NETWORK_ERROR', true);
@@ -463,6 +464,87 @@ alone['a failed page check does not block the event loop'] = async () => {
   measured.push(`longest timer delay during lookups with a refused page check: ${worst} ms`);
   assert.ok(worst < 500, `timers kept running (longest gap ${worst} ms)`);
 };
+const fixes = {};
+fixes['warm keep-alive answers drop a cold-TLS RTO rapidly'] = async () => {
+  const { core } = app({});
+  let n = 0;
+  const http = core.trackHttp({
+    requestJson: () => {
+      n += 1;
+      const ms = n === 1 ? 4500 : 350;
+      return new Promise((r) => setTimeout(() => r({}), ms));
+    },
+    requestText: async () => ({ ok: false, status: 404, text: '' }),
+    requestBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' }),
+  });
+  await http.requestJson('https://cold-tls.example.org/a', { timeoutMs: 20000, hedge: false });
+  assert.ok(core.rtoMs('cold-tls.example.org') >= 12000, `single cold sample starts high (${core.rtoMs('cold-tls.example.org')} ms)`);
+  await http.requestJson('https://cold-tls.example.org/b', { timeoutMs: 20000, hedge: false });
+  await http.requestJson('https://cold-tls.example.org/c', { timeoutMs: 20000, hedge: false });
+  const rto = core.rtoMs('cold-tls.example.org');
+  assert.ok(rto < 3000, `warm responses drop RTO below 3 s (got ${rto} ms)`);
+};
+fixes['non-inflected offline-pack word paints without waiting on Kaikki'] = async () => {
+  const link = { state: (u) => (/kaikki\.org|wiktionary\.org/.test(u) ? 'silent' : 'up') };
+  const { core, service } = app({ delay: [100, 150], seed: 'local-fast' }, { pack, link });
+  const seedSlow = core.trackHttp({
+    requestJson: async () => ({}),
+    requestText: () => new Promise((r) => setTimeout(() => r({ ok: false, status: 404, text: '' }), 4500)),
+    requestBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' }),
+  });
+  await seedSlow.requestText('https://kaikki.org/warm', { timeoutMs: 20000, hedge: false });
+  assert.ok(core.rtoMs('kaikki.org') >= 12000, 'seeded slow Kaikki RTO');
+  const { r, first } = await timedLookup(service, 'cat');
+  assert.ok(senses(r).some((m) => /offline pack/.test(m)), 'the pack sense shows');
+  assert.ok(first > 0 && first < 2600 * SLACK, `paints within core wait (${first} ms) despite slow Kaikki RTO`);
+};
+fixes['Google HTTP 429 fails over immediately to MyMemory'] = async () => {
+  let googleHits = 0;
+  const link = {
+    state: (u) => {
+      if (u.includes('translate.googleapis.com')) {
+        googleHits += 1;
+        return 'rate-limited';
+      }
+      return 'up';
+    },
+  };
+  const { service } = app({ delay: [50, 80], seed: 'gt-429' }, { link });
+  const first = await service.translateText('Hello there, world', 'zh', 'en', 'auto');
+  assert.equal(first && first.source, 'MyMemory');
+  assert.equal(googleHits, 1, 'stops on 429 instead of hitting the second Google URL');
+  const second = await service.translateText('See you tomorrow', 'zh', 'en', 'auto');
+  assert.equal(second && second.source, 'MyMemory');
+  assert.equal(googleHits, 1, 'subsequent call skips Google while cooled down');
+};
+fixes['capitalBelongs caps wait on slow Wiktionary'] = async () => {
+  const { core } = app({});
+  let slowWiktHits = 0;
+  const slowHttp = {
+    requestJson: async (url) => {
+      const u = new URL(url);
+      if (u.hostname === 'translate.googleapis.com') return [[['Apple', '苹果', null, null]], null, 'zh'];
+      if (u.hostname === 'en.wiktionary.org') {
+        slowWiktHits += 1;
+        await new Promise((r) => setTimeout(r, 4500));
+        return {};
+      }
+      throw new core.DictionaryError('HTTP 404', 'HTTP_404', false);
+    },
+    requestText: async () => ({ ok: false, status: 404, text: '' }),
+    requestBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' }),
+  };
+  await core.trackHttp(slowHttp).requestJson('https://en.wiktionary.org/warm', { timeoutMs: 20000, hedge: false });
+  assert.ok(core.rtoMs('en.wiktionary.org') >= 12000, 'seeded slow Wiktionary RTO');
+  core.configureCore({ sha256Hex: (t) => t, http: slowHttp, lookupCache: { get: () => null, set: () => {} } });
+  const svc = new core.DictionaryService();
+  const started = Date.now();
+  const hit = await svc.translateText('苹果', 'en', 'zh', 'google');
+  const took = Date.now() - started;
+  assert.ok(slowWiktHits > 1, 'asked Wiktionary for case');
+  assert.ok(hit && hit.text === 'apple', `falls back to lowercase (${hit && hit.text})`);
+  assert.ok(took < 2600 * SLACK, `capitalBelongs capped around 1.8 s (${took} ms)`);
+};
 
 // "etc." is a title of its own; with Wiktionary two or three seconds away it is still opened as
 // typed, and so it is when the first request for its page never answers.
@@ -484,7 +566,7 @@ for (const [label, net] of Object.entries(etcNets)) {
   const t0 = Date.now();
   // Each case runs in its own copy of core, all of a batch at once.
   const failed = [];
-  for (const batch of [cases, dead, last, alone]) {
+  for (const batch of [cases, dead, last, alone, fixes]) {
     const names = Object.keys(batch);
     const results = await Promise.allSettled(names.map((n) => batch[n]()));
     failed.push(...results.map((r, i) => [names[i], r]).filter(([, r]) => r.status === 'rejected'));

@@ -180,6 +180,9 @@ const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
 const FORM_CHECK_MS = 3500;
 /** Longest a result that may be a form is held back while that page is on its way. */
 const FORM_HOLD_MS = 1200;
+/** Hard ceiling on holding an offline-pack paint or online paint while waiting for a form check. */
+const MAX_FORM_HOLD_LOCAL_MS = 1800;
+const MAX_FORM_HOLD_MS = 4500;
 /**
  * Longest wait on a normal network for whether Wiktionary has a page titled exactly as typed
  * ("etc.", "C++"); withBudget stretches it to two of Wiktionary's round trips when that is longer.
@@ -741,8 +744,9 @@ export class DictionaryService extends BaseService {
           const code = error instanceof DictionaryError ? error.code : '';
           if (code === 'HTTP_429') {
             this.googleGtxCoolUntil = Date.now() + 90_000;
-            console.warn('Google Translate rate-limited; cooling down 90s');
-            continue;
+            this.noteTranslationDown('google');
+            console.warn('Google Translate rate-limited; cooling down and failing over');
+            return null;
           }
           console.warn('Unofficial Google Translate path failed', { url: url.slice(0, 64), error });
           // No answer at all (blocked, timed out): the other path is on the same host, so asking it
@@ -1270,7 +1274,13 @@ export class DictionaryService extends BaseService {
     // Senses from an offline pack are there to show at once. They wait for the tagged page only as
     // long as the round trips measured so far say it needs (FORM_HOLD_MS on a normal network), not
     // as long as a connection that has not answered yet might take: dead or slow, it looks the same.
-    const earlyForLocal = early ? withBudget(early, FORM_HOLD_MS, [KAIKKI, WIKTIONARY], 1, 'form-of', true) : null;
+    const earlyForLocal = early
+      ? withTimeout(
+          withBudget(early, FORM_HOLD_MS, [KAIKKI, WIKTIONARY], 1, 'form-of', true),
+          MAX_FORM_HOLD_LOCAL_MS,
+          'form-of.local',
+        )
+      : null;
     earlyForLocal?.catch((): undefined => undefined);
     const hasLocal = (r: DictionaryResult) => (r.definitions || []).some((d) => isLocalPackSource(d.source));
     let earlyAnswer: { lemma: string | null } | undefined;
@@ -1335,8 +1345,9 @@ export class DictionaryService extends BaseService {
       // inflected, or a result Wiktionary has not reached yet, waits a shorter while.
       const formLike = mayBeFormOf(r);
       const local = hasLocal(r);
-      const limit = formLike ? budgetMs(FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, local) : budgetMs(FORM_HOLD_MS, [KAIKKI, WIKTIONARY], 1, local);
-      const unsure = formLike || mayBeInflected || !wiktionarySenses(r).length;
+      const rawLimit = formLike ? budgetMs(FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, local) : budgetMs(FORM_HOLD_MS, [KAIKKI, WIKTIONARY], 1, local);
+      const limit = Math.min(rawLimit, local ? MAX_FORM_HOLD_LOCAL_MS : MAX_FORM_HOLD_MS);
+      const unsure = formLike || mayBeInflected || (!local && !wiktionarySenses(r).length);
       if (!formCheck && early && !earlyAnswer && !earlyFailed && Date.now() - started < limit && unsure) {
         held = r;
         if (!releasing) {
@@ -3165,7 +3176,11 @@ export class DictionaryService extends BaseService {
     languages?: EntryLanguage[];
   }> {
     const term = language === 'en' ? foldLatinHeadword(text) : text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-    const wikiTextPromise = withBudget(this.getWiktionaryWikitext(term), 2200, WIKTIONARY, 1, 'wiki.wikitext').catch((): string => '');
+    const wikiTextPromise = this.withTimeout(
+      withBudget(this.getWiktionaryWikitext(term), 2200, WIKTIONARY, 1, 'wiki.wikitext').catch((): string => ''),
+      4500,
+      '',
+    );
     const ipaPromise =
       language === 'en'
         ? wikiTextPromise.then((wt) => extractIpaFromWikitext(wt)).catch((): Pronunciation[] => [])
@@ -3279,31 +3294,18 @@ export class DictionaryService extends BaseService {
           }
         }
 
-        // If etymology is still not found, try a short-budget wikitext parse only
-        // (do not call full multi-source fetch here — that hung the parallel race).
-        if (!etymology) {
-          try {
-            const wikiOnly = await this.withTimeout(
-              this.fetchEtymologyFromWikitext(term),
-              1500,
-              undefined as { text: string; chain?: EtymologyLink[] } | undefined,
-            );
-            if (wikiOnly?.text) etymology = wikiOnly.text;
-          } catch {
-            /* optional */
-          }
+        const wikitext = await wikiTextPromise;
+        if (!etymology && wikitext) {
+          etymology = this.extractEtymologyFromWikitext(wikitext);
         }
 
         const pronunciations = mergePronunciations(
           // The English entry of a word looked up in another language gets its English IPA.
-          await (shownKey === 'en' && language !== 'en'
-            ? wikiTextPromise.then((wt) => extractIpaFromWikitext(wt)).catch((): Pronunciation[] => [])
-            : ipaPromise),
+          shownKey === 'en' && language !== 'en' ? extractIpaFromWikitext(wikitext) : await ipaPromise,
           pronunciation && !/US\s|UK\s/.test(pronunciation)
             ? [{ ipa: pronunciation, accent: 'other', source: 'Wiktionary' }]
             : undefined,
         );
-        const wikitext = await wikiTextPromise;
         const headGrammar = attachSenseNotes(wikitext, glossed, (pos) => this.normalizePartOfSpeech(pos));
         const wordFamily = buildWordFamily({
           surface: term,
@@ -4728,13 +4730,17 @@ export class DictionaryService extends BaseService {
     const lowerWord = word.charAt(0).toLocaleLowerCase(lang(targetLanguage) || undefined) + word.slice(1);
     // Glosses of the source are asked for only when they are in the target language (English).
     const titles = [lang(targetLanguage) === 'en' ? typed : '', word, lowerWord];
-    const pages = await withBudget(
-      Promise.all(titles.map((t) => (t ? this.wiktionaryDefinitions(t) : Promise.resolve(undefined)))),
-      TRANSLATION_CASE_MS,
-      WIKTIONARY,
-      1,
-      'translation-case',
-    ).catch((): null => null);
+    const pages = await this.withTimeout(
+      withBudget(
+        Promise.all(titles.map((t) => (t ? this.wiktionaryDefinitions(t) : Promise.resolve(undefined)))),
+        TRANSLATION_CASE_MS,
+        WIKTIONARY,
+        1,
+        'translation-case',
+      ).catch((): null => null),
+      1800,
+      null,
+    );
     if (!pages) return false;
     // A page that failed to load says nothing; one Wiktionary does not have (404) is null.
     const [sourcePage, ownPage, lowerPage] = pages.map((p, i) => (titles[i] && this.unansweredTitles.has(titles[i]) ? undefined : p));
@@ -4803,12 +4809,13 @@ export class DictionaryService extends BaseService {
           // send every translation to two engines.
           const host = waitingOn;
           const sentAt = Date.now();
+          const staggerMs = () => Math.min(2500, budgetMs(TRANSLATION_STAGGER_MS, host));
           const check = () => {
-            const left = budgetMs(TRANSLATION_STAGGER_MS, host) - (Date.now() - sentAt);
+            const left = staggerMs() - (Date.now() - sentAt);
             if (left > 0) timer = setTimeout(check, left);
             else startNext();
           };
-          timer = setTimeout(check, budgetMs(TRANSLATION_STAGGER_MS, host));
+          timer = setTimeout(check, staggerMs());
         }
       };
       const off = onNetChange(() => {

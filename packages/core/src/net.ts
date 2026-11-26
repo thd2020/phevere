@@ -285,6 +285,11 @@ export function noteRoundTrip(host: string, ms: number): void {
   if (!s.samples) {
     s.srtt = ms;
     s.rttvar = ms / 2;
+  } else if (ms < s.srtt * 0.4) {
+    // A warm answer much faster than a cold-TLS spike should drop RTO quickly
+    // instead of letting |srtt - ms| keep rttvar elevated at MAX_RTO_MS.
+    s.srtt = 0.25 * s.srtt + 0.75 * ms;
+    s.rttvar = Math.min(s.rttvar * 0.25, Math.max(ms / 2, Math.abs(s.srtt - ms) * 0.25));
   } else {
     s.rttvar = 0.75 * s.rttvar + 0.25 * Math.abs(s.srtt - ms);
     s.srtt = 0.875 * s.srtt + 0.125 * ms;
