@@ -238,7 +238,107 @@ configureCore({ ...coreConfig, lookupCache: { get: () => null, set: () => {} } }
   rest.accommodate = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'To provide housing for.' }] }] };
   const fixed = await new DictionaryService().lookup('accomodate', 'zh');
   assert.equal(fixed.word, 'accommodate', 'a misspelling opens its word');
-  console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it; "i.e." opens in English and in Italian on request.');
+
+  // Leftover regular derived-form redirects: Wiktionary text fallback with minor glosses / another-POS
+  // own sense, Datamuse defHeadword, two-hop spelling chains, all-caps non-acronyms, and offline lemma fallback.
+  rest.gleaned = {
+    en: [
+      {
+        partOfSpeech: 'Verb',
+        language: 'English',
+        definitions: [
+          { definition: 'simple past and past participle of glean' },
+          { definition: '(obsolete except UK, dialectal) Harvested; picked up.' },
+        ],
+      },
+    ],
+  };
+  rest.glean = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'To gather bit by bit.' }] }] };
+  const gleaned = await new DictionaryService().lookup('gleaned', 'zh');
+  assert.equal(gleaned.word, 'glean', 'gleaned redirects even when Kaikki has no page');
+
+  rest.pledged = {
+    en: [
+      { partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'simple past tense and past participle of pledge' }] },
+      { partOfSpeech: 'Adjective', language: 'English', definitions: [{ definition: 'Bound by a pledge.' }] },
+    ],
+  };
+  rest.pledge = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'To make a solemn promise.' }] }] };
+  const pledged = await new DictionaryService().lookup('pledged', 'zh');
+  assert.equal(pledged.word, 'pledge', 'pledged redirects despite its adjective own sense');
+
+  rest.superceded = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'Variant spelling of supercede.' }] }] };
+  rest.supercede = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'Alternative spelling of supersede.' }] }] };
+  rest.supersede = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'To replace or take the place of.' }] }] };
+  const superceded = await new DictionaryService().lookup('superceded', 'zh');
+  assert.equal(superceded.word, 'supersede', 'two-hop form/spelling chain opens the standard lemma');
+  assert.equal(superceded.metadata.formFrom, 'superceded', 'keeps the original surface in formFrom');
+
+  kaikki.walks = {
+    word: 'walks',
+    lang_code: 'en',
+    pos: 'verb',
+    senses: [{ tags: ['form-of', 'third-person', 'singular'], form_of: [{ word: 'walk' }], glosses: ['third-person singular simple present indicative of walk'] }],
+  };
+  rest.walk = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'To move on foot.' }] }] };
+  kaikki.AIDS = {
+    word: 'AIDS',
+    lang_code: 'en',
+    pos: 'noun',
+    senses: [{ glosses: ['Acquired immune deficiency syndrome.'] }],
+  };
+  rest.AIDS = { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: 'Acquired immune deficiency syndrome.' }] }] };
+  const walksCaps = await new DictionaryService().lookup('WALKS', 'zh');
+  assert.equal(walksCaps.word, 'walk', 'all-caps inflected form with no caps entry redirects to walk');
+  const aids = await new DictionaryService().lookup('AIDS', 'zh');
+  assert.equal(aids.word, 'AIDS', 'real all-caps acronym stays uppercase');
+
+  routes.json.unshift([
+    (u) => u.hostname === 'api.datamuse.com' && u.pathname === '/words' && u.searchParams.get('sp') === 'dichotomized',
+    () => [{ word: 'dichotomized', defHeadword: 'dichotomize', defs: ['v\tTo divide into two parts.'] }],
+  ]);
+  rest.dichotomize = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'To divide into two parts.' }] }] };
+  const dich = await new DictionaryService().lookup('dichotomized', 'zh');
+  assert.equal(dich.word, 'dichotomize', 'Datamuse defHeadword redirects regular form when Kaikki and Wiktionary lack it');
+
+  // Offline / candidate lemma fallback displays the lemma directly when the surface is a regular inflection.
+  configureCore({
+    ...coreConfig,
+    lookupCache: { get: () => null, set: () => {} },
+    lookupOffline: async (w) =>
+      w === 'rescue'
+        ? [{ headword: 'rescue', language: 'en', pos: 'verb', definition: 'To save from danger.', packId: 'webster1913', packName: "Webster's 1913" }]
+        : [],
+  });
+  const rescuing = await new DictionaryService().lookup('rescuing', 'zh');
+  assert.equal(rescuing.word, 'rescue', 'regular offline lemma fallback opens the lemma directly');
+  assert.equal(rescuing.metadata.formFrom, 'rescuing');
+  assert.ok(!rescuing.metadata.lemmaFallback, 'no stale lemmaFallback badge on regular redirect');
+
+  // Delayed Wiktionary senses arriving via onUpdate still redirect even if an earlier hit did not match.
+  configureCore({ ...coreConfig, lookupCache: { get: () => null, set: () => {} } });
+  let sendLateWikt = false;
+  routes.json.unshift([
+    (u) => u.hostname === 'api.datamuse.com' && u.pathname === '/words' && u.searchParams.get('sp') === 'blinked',
+    () => [{ word: 'blinked', defs: ['v\tShut and open the eyes rapidly.'] }],
+  ]);
+  routes.json.unshift([
+    (u) => u.hostname === 'en.wiktionary.org' && u.pathname === '/api/rest_v1/page/definition/blinked',
+    async () => {
+      while (!sendLateWikt) await sleep(20);
+      return { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'simple past and past participle of blink' }] }] };
+    },
+  ]);
+  rest.blink = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'To shut and open the eyes quickly.' }] }] };
+  const lateUpdates = [];
+  const lateSvc = new DictionaryService();
+  const latePromise = lateSvc.lookup('blinked', 'zh', undefined, { onUpdate: (r) => lateUpdates.push(r) });
+  await sleep(60);
+  sendLateWikt = true;
+  const blinked = await latePromise;
+  assert.equal(blinked.word, 'blink', 'late Wiktionary form-of update redirects cleanly');
+
+  console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it; "i.e." opens in English and in Italian on request; derived forms redirect cleanly.');
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);
 })().catch((err) => {

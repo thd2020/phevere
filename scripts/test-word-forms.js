@@ -311,6 +311,36 @@ assert.match(didYouMeanHtml({ metadata: { suggestions: ['governess', 'governesse
   assert.equal(fo.formOfLemmaFromGlosses(['Abbreviation of laboratory.'], 'lab'), null);
   assert.equal(fo.formOfLemmaFromGlosses(['plural of die (“polyhedron used in games of chance”)'], 'dice'), 'die');
   assert.equal(fo.formOfLemmaFromGlosses(['Alternative form of calipers , a device used to measure dimensions.'], 'caliper'), null);
+  assert.equal(fo.formOfGlossLemma('(transitive) Variant spelling of supersede [dated]'), 'supersede');
+  assert.equal(fo.isMinorGloss('(obsolete except UK, dialectal) Harvested.'), true);
+  assert.equal(fo.isMinorGloss('(transitive) To harvest grain.'), false);
+  assert.equal(
+    fo.formOfLemmaFromGlosses(['simple past and past participle of glean', '(obsolete except UK, dialectal) Harvested; picked up.'], 'gleaned'),
+    'glean',
+    'minor register glosses do not block a regular form redirect',
+  );
+  assert.equal(
+    fo.formOfLemmaFromGlosses(
+      [
+        { partOfSpeech: 'Verb', meaning: 'simple past tense and past participle of pledge' },
+        { partOfSpeech: 'Adjective', meaning: 'Bound by a pledge.' },
+      ],
+      'pledged',
+    ),
+    'pledge',
+    'one own sense in another POS does not block a form redirect',
+  );
+  assert.equal(
+    fo.formOfLemmaFromGlosses(
+      [
+        { partOfSpeech: 'Noun', meaning: 'plural of glass' },
+        { partOfSpeech: 'Noun', meaning: 'Spectacles, frames bearing two lenses.' },
+      ],
+      'glasses',
+    ),
+    null,
+    'one own sense in the same POS keeps the form itself',
+  );
 
   // References from the page's References section are not senses (the saved "idiosyncracy").
   const saved = [

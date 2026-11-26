@@ -100,7 +100,7 @@ import { registerHeadwordResolver } from './vocab-store';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey, exactQuery, exactLookupKey, hasEdgePunctuation } from './text-normalize';
 import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText, stripSisterProjects } from './lookup-policy';
 import { alignSenseNotes, glossLabelMark, glossOwnHtml, notesFields, wikiSenseSections } from './sense-notes';
-import { datamuseEntry, formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, isOwnNounGloss, resolveFormOf } from './form-of';
+import { datamuseEntry, formLine, formOfGlossLemma, formOfLemmaFromGlosses, hasOwnFormEntry, isCitationGloss, isOwnNounGloss, isRegularInflection, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, sameHeadword, serializeEtymologySources } from './etymology-sources';
@@ -212,7 +212,7 @@ const EXACT_TITLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * without it is looked up again once. A mark, not a date: partial results are saved with an
  * earlier time so they expire sooner.
  */
-const FORM_RULES = 2;
+const FORM_RULES = 3;
 
 /** A sense of any source that points at another headword: "plural of paparazzo", "A paparazzo." */
 function pointsElsewhere(result: DictionaryResult | null | undefined): boolean {
@@ -242,6 +242,10 @@ type LookupOpts = {
   noCorrection?: boolean;
   /** Set on the lookup of the word a form stands for, so it cannot redirect again. */
   noFormRedirect?: boolean;
+  /** Number of form-of redirects taken so far (max 2, so spelling -> lemma chains finish cleanly). */
+  formRedirectDepth?: number;
+  /** Original surface form that initiated a multi-hop form-of redirect. */
+  formFrom?: string;
   /**
    * The source language was detected, not chosen, and may be wrong for a word Wiktionary also
    * has in English ("i.e.", detected as Italian): its Wiktionary step shows the English entry
@@ -286,15 +290,17 @@ function linksToTitle(def: { definition?: string }, title: string): boolean {
   return false;
 }
 
-/** Wiktionary's senses of the looked-up word; other sources answer a form with the base word's senses. */
+/** Wiktionary's senses of the looked-up word with POS; other sources answer a form with the base word's senses. */
+function wiktionaryDefSenses(result: DictionaryResult | null | undefined): Array<{ meaning: string; partOfSpeech: string }> {
+  return (result?.definitions || []).filter((d) => {
+    if (!d || !/wiktionary/i.test(String(d.source || ''))) return false;
+    const m = (d.meaning || '').trim();
+    return !!m && m !== 'No definition available.' && !isTimeoutMeaning(m) && !isCitationGloss(m);
+  });
+}
+
 function wiktionarySenses(result: DictionaryResult | null | undefined): string[] {
-  return (result?.definitions || [])
-    .filter((d) => {
-      if (!d || !/wiktionary/i.test(String(d.source || ''))) return false;
-      const m = (d.meaning || '').trim();
-      return !!m && m !== 'No definition available.' && !isTimeoutMeaning(m) && !isCitationGloss(m);
-    })
-    .map((d) => d.meaning);
+  return wiktionaryDefSenses(result).map((d) => d.meaning);
 }
 
 /**
@@ -309,10 +315,16 @@ export function mayBeFormOf(result: DictionaryResult | null | undefined): boolea
  * The word to show and save instead, judged from Wiktionary's senses as text: every sense is a
  * form of one word ("acronyms", "gleaned", "idiosyncracy"). Datamuse and the Free Dictionary do
  * not count. A form with senses of its own ("bacteria" is also a type or strain of bacterium,
- * "glasses" are spectacles) is a word in its own right and gets null.
+ * "glasses" are spectacles, "savings" has a Datamuse noun sense of its own) stays itself.
  */
 export function formOfTextTarget(result: DictionaryResult | null | undefined): string | null {
-  return formOfLemmaFromGlosses(wiktionarySenses(result), String(result?.word || ''));
+  const word = String(result?.word || '');
+  const target = formOfLemmaFromGlosses(wiktionaryDefSenses(result), word);
+  if (!target) return null;
+  if (isRegularInflection(word, target) && (result?.definitions || []).some((d) => d?.ownSense)) {
+    return null;
+  }
+  return target;
 }
 
 /**
@@ -990,7 +1002,7 @@ export class DictionaryService extends BaseService {
           // tagged page: looked up again ("paparazzi" kept as "A paparazzo." from the Free Dictionary).
           const meta = value?.metadata || {};
           const stalePlural =
-            (!!value && !meta.formChecked && !meta.formFrom && (mayBeFormOf(value) || pointsElsewhere(value) || meta.formRules !== FORM_RULES)) ||
+            (!!value && !meta.formChecked && !meta.formFrom && (mayBeFormOf(value) || pointsElsewhere(value) || !!meta.lemmaFallback || meta.formRules !== FORM_RULES)) ||
             // A form opened as its lemma before forms said what they are ("ran · past tense of run").
             (!!meta.formFrom && !meta.formLineChecked);
           if (saved && value && left > 0 && !staleNoIpa && !stalePlural && !this.isUncacheableResult(value)) {
@@ -1226,10 +1238,35 @@ export class DictionaryService extends BaseService {
     const kaikkiOn =
       lang === 'en' && isCoreConfigured() && query.kind === 'word' && !/\s/.test(headword) && this.isNamedSourceOn('Kaikki', enabledSources);
     // "Paris" typed with its capital is the city, not the plural of pari.
-    const formOrProper = (): Promise<string | null> =>
-      Promise.all([resolveFormOf(getHttp(), headword, 'en'), this.isProperNoun(query.trimmed)]).then(([lemma, proper]) => (proper ? null : lemma));
+    const formOrProper = async (): Promise<string | null> => {
+      const caps = headword !== headword.toLowerCase() && /^\p{Lu}{2,6}$/u.test(headword);
+      const properPromise = this.isProperNoun(query.trimmed);
+      let lemma: string | null = null;
+      try {
+        lemma = await resolveFormOf(getHttp(), headword, 'en');
+      } catch (err) {
+        if (!caps) {
+          await properPromise.catch((): boolean => false);
+          throw err;
+        }
+        // All-caps words (WALKS vs AIDS): foldLatinHeadword preserves caps for acronyms;
+        // if Kaikki has no page under the caps spelling, fall back to the lowercase word.
+        const capsPage = await fetchKaikkiPage(getHttp(), headword, kaikkiDirectory('en') || 'dictionary', 2500).catch((): string => '');
+        if (capsPage.trim()) throw err;
+        lemma = await resolveFormOf(getHttp(), headword.toLowerCase(), 'en');
+      }
+      if (await properPromise) return null;
+      if (lemma) return lemma;
+      if (caps) {
+        const capsPage = await fetchKaikkiPage(getHttp(), headword, kaikkiDirectory('en') || 'dictionary', 2500).catch((): string => '');
+        if (!capsPage.trim()) return resolveFormOf(getHttp(), headword.toLowerCase(), 'en');
+      }
+      return null;
+    };
+    const depth = opts?.formRedirectDepth || 0;
+    const originWord = opts?.formFrom || query.trimmed;
     const early: Promise<string | null> | null =
-      !opts?.noFormRedirect && kaikkiOn ? withBudget(formOrProper(), FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, 'form-of') : null;
+      !opts?.noFormRedirect && depth < 2 && kaikkiOn ? withBudget(formOrProper(), FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, 'form-of') : null;
     // Senses from an offline pack are there to show at once. They wait for the tagged page only as
     // long as the round trips measured so far say it needs (FORM_HOLD_MS on a normal network), not
     // as long as a connection that has not answered yet might take: dead or slow, it looks the same.
@@ -1249,26 +1286,37 @@ export class DictionaryService extends BaseService {
     let emitted = 0;
     /** `final`: the lookup's last result, which waits for the page's answer when one was asked for. */
     const checkForm = (r: DictionaryResult, final = false): Promise<DictionaryResult | null> | null => {
-      if (formCheck || opts?.noFormRedirect) return formCheck;
+      if (formCheck || opts?.noFormRedirect || depth >= 2) return formCheck;
       if (earlyAnswer && !earlyAnswer.lemma) {
         notAForm = true;
         return null;
       }
       // The last result waits for the page only when Wiktionary has not ruled the word out.
       const unruled = !wiktionarySenses(r).length;
-      if (!mayBeFormOf(r) && !earlyAnswer?.lemma && !(final && early && unruled)) return null;
+      const datamuseForm =
+        unruled &&
+        !!r.metadata?.datamuseHeadword &&
+        isRegularInflection(r.word, r.metadata.datamuseHeadword) &&
+        !(r.definitions || []).some((d) => d?.ownSense);
+      if (!mayBeFormOf(r) && !earlyAnswer?.lemma && !datamuseForm && !(final && early && unruled)) return null;
       const decision = this.decideForm(r, hasLocal(r) ? earlyForLocal : early);
       if (!early) this.noteFormDecision(decisionKey, decision.then((d) => d.lemma));
-      formCheck = decision.then(({ lemma, sure }) => {
+      const promise = decision.then(({ lemma, sure }) => {
         if (lemma && exactLookupKey(lemma) !== exactLookupKey(query.trimmed)) {
           // An irregular form spelled unlike its lemma ("ran", "was", "mice") says what it is above
           // the entry, as learner dictionaries give it a short entry of its own.
-          const line = formLine(headword, 'en');
-          return instead(lemma, { noFormRedirect: true }, { formFrom: query.trimmed, formLineChecked: true, ...(line ? { formLine: line } : {}) });
+          const line = hasOwnFormEntry(originWord, lemma) ? formLine(headword, 'en') : null;
+          return instead(
+            lemma,
+            { formRedirectDepth: depth + 1, noFormRedirect: depth + 1 >= 2, formFrom: originWord },
+            { formFrom: originWord, formLineChecked: true, ...(line ? { formLine: line } : {}) },
+          );
         }
         if (sure) notAForm = true;
+        else if (!final && formCheck === promise) formCheck = null;
         return null;
       });
+      formCheck = promise;
       return formCheck;
     };
     const stamp = (r: DictionaryResult): DictionaryResult => {
@@ -1310,7 +1358,8 @@ export class DictionaryService extends BaseService {
         if (!waitingCheck) {
           waitingCheck = true;
           void pending.then((next) => {
-            checkDone = true;
+            waitingCheck = false;
+            if (next || notAForm) checkDone = true;
             const h = held;
             held = null;
             if (next) opts.onUpdate!(next);
@@ -1350,7 +1399,18 @@ export class DictionaryService extends BaseService {
         /* fall back to the text of the senses */
       }
     }
-    return { lemma: formOfTextTarget(result), sure: false };
+    const textTarget = formOfTextTarget(result);
+    if (textTarget) return { lemma: textTarget, sure: false };
+    const dmHead = !wiktionarySenses(result).length ? result.metadata?.datamuseHeadword : undefined;
+    if (
+      typeof dmHead === 'string' &&
+      dmHead &&
+      isRegularInflection(result.word, dmHead) &&
+      !(result.definitions || []).some((d) => d?.ownSense)
+    ) {
+      return { lemma: dmHead, sure: false };
+    }
+    return { lemma: null, sure: false };
   }
 
   /** Form decisions of recent lookups, by folded word, for a save that comes before the page turns. */
@@ -1532,8 +1592,9 @@ export class DictionaryService extends BaseService {
     candidate: string,
     lemmaFallback = false,
   ): DictionaryResult {
-    const surface = this.displayHeadword(query.trimmed);
-    acc.word = surface;
+    const redirectedRegular = lemmaFallback && !sameLookupFold(candidate, query.trimmed) && isRegularInflection(query.trimmed, candidate);
+    const display = redirectedRegular ? this.displayHeadword(candidate) : this.displayHeadword(query.trimmed);
+    acc.word = display;
     acc.metadata = {
       ...(acc.metadata || {}),
       isSentence: false,
@@ -1541,8 +1602,10 @@ export class DictionaryService extends BaseService {
       originalSelection: query.raw,
       matchedQuery: candidate,
       queriedAs: query.trimmed,
-      lemma: lemmaFallback && !sameLookupFold(candidate, query.trimmed) ? candidate : undefined,
-      lemmaFallback: lemmaFallback && !sameLookupFold(candidate, query.trimmed) ? true : undefined,
+      formFrom: redirectedRegular ? acc.metadata?.formFrom || query.trimmed : acc.metadata?.formFrom,
+      formLineChecked: redirectedRegular ? true : acc.metadata?.formLineChecked,
+      lemma: !redirectedRegular && lemmaFallback && !sameLookupFold(candidate, query.trimmed) ? candidate : undefined,
+      lemmaFallback: !redirectedRegular && lemmaFallback && !sameLookupFold(candidate, query.trimmed) ? true : undefined,
       normalizedFrom: candidate === query.sanitized ? undefined : query.sanitized,
     };
     return acc;
@@ -2121,6 +2184,7 @@ export class DictionaryService extends BaseService {
     // Datamuse's pronunciation of a word CMUdict lacks, used only when CMUdict has nothing.
     let cmuIpa = '';
     let datamuseIpa = '';
+    let datamuseHeadword = '';
     if (preferLatinSources && !hasCJK && !chosenOther) {
       pushCore(cmuIpaFor(lookupWord).then((ipa) => ({ type: 'cmu', data: ipa })));
     }
@@ -2372,6 +2436,7 @@ export class DictionaryService extends BaseService {
           break;
         case 'datamuse':
           if (typeof data?.ipa === 'string') datamuseIpa = data.ipa;
+          if (typeof data?.defHeadword === 'string' && !datamuseHeadword) datamuseHeadword = data.defHeadword;
           if (data && (data.definitions.length > 0 || data.synonyms.length > 0)) {
             const existing = new Set(definitions.map((d: Definition) => (d.meaning || '').toLowerCase()));
             const fresh = data.definitions.filter((d: Definition) => !existing.has(d.meaning.toLowerCase()));
@@ -2479,6 +2544,7 @@ export class DictionaryService extends BaseService {
       entryLangs = undefined;
       cmuIpa = '';
       datamuseIpa = '';
+      datamuseHeadword = '';
       if (skipEtymology) etymology = undefined;
       const rank = (item: any) => {
         const at = SOURCE_ORDER.indexOf(String(item?.type || ''));
@@ -2621,6 +2687,7 @@ export class DictionaryService extends BaseService {
           etymologyUnavailable: etymologyUnavailableSources,
           pendingTranslation,
           pendingPronunciation,
+          ...(datamuseHeadword ? { datamuseHeadword } : {}),
           translationProvider: opts?.translationProvider || 'auto',
         },
       };
@@ -3589,7 +3656,7 @@ export class DictionaryService extends BaseService {
    * Free for non-commercial use; an API key becomes mandatory in 2027.
    * https://www.datamuse.com/api/
    */
-  private async getDatamuseData(text: string): Promise<{ definitions: Definition[]; synonyms: string[]; ipa?: string }> {
+  private async getDatamuseData(text: string): Promise<{ definitions: Definition[]; synonyms: string[]; ipa?: string; defHeadword?: string }> {
     const empty = { definitions: [] as Definition[], synonyms: [] as string[] };
     const word = text.toLocaleLowerCase();
     if (!/^[\p{L}][\p{L}'\- ]{0,40}$/u.test(word)) return empty;
@@ -3617,6 +3684,8 @@ export class DictionaryService extends BaseService {
     const top = Array.isArray(entries) ? entries[0] : null;
     // `sp=` is a wildcard match, so confirm we got the word we asked for.
     const exact = !!top && typeof top.word === 'string' && top.word.toLocaleLowerCase() === word;
+    const rawHeadword = exact && typeof top?.defHeadword === 'string' ? top.defHeadword.trim() : '';
+    const defHeadword = rawHeadword && rawHeadword.toLocaleLowerCase() !== word ? rawHeadword : '';
     // "pron:HH AA1 L AH0 N " (ARPAbet, as in CMUdict). One word only: a phrase's tag
     // runs its words together with no break.
     const pronTag = exact && !/\s/.test(word) && Array.isArray(top.tags)
@@ -3643,7 +3712,7 @@ export class DictionaryService extends BaseService {
       ? related.map((r: any) => r?.word).filter((w: any): w is string => typeof w === 'string' && w.length > 0)
       : [];
 
-    return { definitions, synonyms, ...(ipa ? { ipa } : {}) };
+    return { definitions, synonyms, ...(ipa ? { ipa } : {}), ...(defHeadword ? { defHeadword } : {}) };
   }
 
   /**

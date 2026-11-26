@@ -54,13 +54,16 @@ export function stripCitationLines(definition: string): string {
 /** Words a form-of label is made of: "simple past and past participle", "alternative spelling". */
 const LABEL_WORDS = new Set([
   'simple', 'past', 'tense', 'participle', 'present', 'and', 'or', 'plural', 'third-person', 'singular', 'indicative',
-  'form', 'gerund', 'comparative', 'superlative', 'degree', 'alternative', 'obsolete', 'archaic', 'dated', 'spelling',
+  'form', 'gerund', 'comparative', 'superlative', 'degree', 'alternative', 'variant', 'obsolete', 'archaic', 'dated', 'spelling',
   'misspelling', 'common', 'letter-case', 'inflection', 'the', 'a', 'an', 'subjunctive', 'imperative', 'first-person', 'remote',
   'second-person', 'first/third-person', 'first/second/third-person',
 ]);
 const LABEL_CORE = /\b(?:past|participle|plural|singular|gerund|comparative|superlative|spelling|form|inflection|subjunctive|imperative)\b/;
 const FORM_OF_TEXT =
-  /^(.{1,90}?)\s+of\s+["“]?([\p{L}][\p{L}'’-]*(?:\s[\p{L}][\p{L}'’-]*){0,2}?)["”]?\s*(?:\(\s*[“"][^)]*\))?\s*[.;]?$/u;
+  /^(.{1,90}?)\s+of\s+["“]?([\p{L}][\p{L}'’-]*(?:\s[\p{L}][\p{L}'’-]*){0,2}?)["”]?\s*(?:\([^)]*\)|\[[^\]]*\])*\s*[.;]?$/u;
+const LEADING_PARENS = /^\s*(?:\([^)]*\)\s*)+/;
+const MINOR_GLOSS_WORD =
+  /\b(?:obsolete|archaic|dialectal|rare|nonstandard|nonce[- ]word|proscribed|humorous|poetic|eye[- ]dialect|pronunciation[- ]spelling|hypercorrect|misconstruction|dated|slang|vulgar|colloquial)\b/i;
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -76,9 +79,15 @@ function isRestatement(gloss: string, words: string[]): boolean {
   ).test(gloss.trim());
 }
 
+/** Whether a plain-text gloss starts with a minor register label such as "(obsolete except UK, dialectal)". */
+export function isMinorGloss(meaning: string): boolean {
+  const m = LEADING_PARENS.exec(stripGlossText(meaning));
+  return !!m && MINOR_GLOSS_WORD.test(m[0]);
+}
+
 /** The lemma a gloss such as "simple past and past participle of glean" names, or null. */
 export function formOfGlossLemma(meaning: string): string | null {
-  const text = stripGlossText(meaning).replace(/\s+([,.;])/g, '$1');
+  const text = stripGlossText(meaning).replace(LEADING_PARENS, '').replace(/\s+([,.;])/g, '$1').trim();
   const m = FORM_OF_TEXT.exec(text);
   if (!m) return null;
   const label = m[1].toLowerCase().replace(/,/g, ' ');
@@ -87,26 +96,41 @@ export function formOfGlossLemma(meaning: string): string | null {
   return m[2].trim();
 }
 
+export type GlossSense = string | { meaning: string; partOfSpeech?: string };
+
 /**
- * The lemma when every one of `senses` (Wiktionary's, as text or HTML) is a form of it, leaving out
- * references and senses that only restate the word; null when any sense has a meaning of its own or
- * the senses name more than one lemma.
+ * The lemma when every non-minor one of `senses` (Wiktionary's, as text or HTML) is a form of it
+ * (allowing at most one own sense in another part of speech when parts of speech are supplied);
+ * null when any sense has a meaning of its own or the senses name more than one lemma.
  */
-export function formOfLemmaFromGlosses(senses: string[], word = ''): string | null {
-  const list = senses.filter((s) => s && !isCitationGloss(s)).map(stripGlossText).filter(Boolean);
+export function formOfLemmaFromGlosses(senses: GlossSense[], word = ''): string | null {
+  const items = senses
+    .map((item) => {
+      const raw = typeof item === 'string' ? item : item?.meaning || '';
+      const pos = typeof item === 'string' ? '' : String(item?.partOfSpeech || '').toLowerCase().trim();
+      return { raw, text: stripGlossText(raw), pos: pos === 'unknown' ? '' : pos };
+    })
+    .filter((x) => x.text && !isCitationGloss(x.raw));
+  const major = items.filter((x) => !isMinorGloss(x.raw));
+  const list = major.length ? major : items;
   let lemma = '';
-  const rest: string[] = [];
+  const formPos = new Set<string>();
+  const rest: Array<{ text: string; pos: string }> = [];
   for (const s of list) {
-    const l = formOfGlossLemma(s);
+    const l = formOfGlossLemma(s.text);
     if (!l) {
-      rest.push(s);
+      rest.push({ text: s.text, pos: s.pos });
       continue;
     }
     if (lemma && l.toLowerCase() !== lemma.toLowerCase()) return null;
+    if (s.pos) formPos.add(s.pos);
     lemma = l;
   }
   if (!lemma || lemma.toLowerCase() === word.trim().toLowerCase()) return null;
-  return rest.every((s) => isRestatement(s, [word, lemma])) ? lemma : null;
+  const own = rest.filter((s) => !isRestatement(s.text, [word, lemma]));
+  if (!own.length) return lemma;
+  if (own.length === 1 && own[0].pos && formPos.size > 0 && !formPos.has(own[0].pos)) return lemma;
+  return null;
 }
 
 /* ---------------------------------------------------------- kaikki senses */
