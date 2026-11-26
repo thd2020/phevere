@@ -613,6 +613,42 @@ function assertStripAt(win, word, message) {
   words.pop();
   words.pop();
 
+  // Close the expanded test pop-up so it doesn't cover the test words below.
+  for (const w of strips()) { w.close(); w.closed(); }
+
+  // Moving away from a selected word (even while its pop-up stays open) and hovering
+  // another word updates the pop-up without needing a click or 10s+ wait.
+  now += 2000;
+  mouseDown = false;
+  await hover.tick();
+  context.contextCaptureHub.emit({ text: 'selected', x: 300, y: 600, timestamp: now, origin: 'selection', coordSpace: 'dip' });
+  await flush();
+  const selStrip = strips()[0];
+  assert.ok(selStrip, 'selection opens a pop-up');
+  selStrip.finishLoad();
+  assert.equal(selStrip.text, 'selected');
+  assert.equal(context.hoverYieldsToSelection({ x: 300, y: 600 }), true, 'selection holds its own spot');
+  assert.equal(context.hoverYieldsToSelection({ x: 100, y: 100 }), false, 'hovering elsewhere does not yield to selection');
+  const betaWord = words.find((w) => w.text === 'beta') || words[0];
+  await dwellOn(betaWord);
+  await flush();
+  assert.equal(selStrip.text, betaWord.text, 'hovering elsewhere updates the pop-up while open');
+  assert.equal(hover.isHeldBySelection(), false, 'hovering elsewhere releases the selection hold');
+
+  // After staying away > 3s in shortcut mode, pressing the trigger reads under the pointer.
+  now += 2000;
+  context.monitorSettings.mode = 'shortcut';
+  context.contextCaptureHub.emit({ text: 'selected', x: 300, y: 600, timestamp: now, origin: 'selection', coordSpace: 'dip' });
+  await flush();
+  cursor = center(betaWord);
+  now += 3500;
+  context.onTriggerShortcutAfterSelection();
+  await hover.tick();
+  await flush();
+  assert.equal(strips()[0]?.text, betaWord.text, 'shortcut after 3s away reads the word under the pointer');
+  context.monitorSettings.mode = 'on';
+  for (const w of strips()) { w.close(); w.closed(); }
+
   hover.stop();
   console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged (also with no will-move, as on Linux), physical selection on 150%, keeps its side as the entry sets its height, looks up hover over its own text without moving, one strip for hovers over an expanded pop-up, click back on the pop-up closes it; trigger reads the word under the pointer (a focused Phevere page reads its own), cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
 })().catch((error) => { console.error(error); process.exit(1); });

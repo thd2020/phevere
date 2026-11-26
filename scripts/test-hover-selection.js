@@ -117,6 +117,56 @@ hover.start();
   await ownHover.tick();
   assert.deepEqual(own, [[10, 10]], "the trigger's read over a Phevere window goes to that window");
   ownHover.stop();
+
+  // Moving away from a selection and hovering another word ends the hold without clicking.
+  let awayCursor = { x: 100, y: 100 };
+  let pressed = false;
+  emitted.length = 0;
+  const awayHover = new HoverLookupService({
+    dwellMs: 200,
+    cooldownMs: 0,
+    selectionHoldMs: 60_000,
+    selectionAwayHoldMs: 3_000,
+    staleTolerancePx: 24,
+    cursor: { point: () => awayCursor },
+    isMouseDown: () => false,
+    wasMousePressed: () => {
+      const p = pressed;
+      pressed = false;
+      return p;
+    },
+    getWordAtPoint: (x, y) => (x >= 300 ? { text: 'elsewhere', x, y } : { text: 'selected', x, y }),
+    skipOcr: () => true,
+  });
+  awayHover.start();
+  awayHover.holdForSelection({ x: 100, y: 100 });
+  // Near the selection stays quiet.
+  now += 500;
+  await awayHover.tick();
+  assert.deepEqual(emitted, [], 'hovering on the held selection stays quiet');
+  // A fast click between ticks clears the hold even near the selection.
+  pressed = true;
+  await awayHover.tick();
+  assert.equal(awayHover.isHeldBySelection(), false, 'wasMousePressed releases selection hold');
+
+  // Re-hold, move elsewhere without clicking, and hover a new word.
+  awayHover.holdForSelection({ x: 100, y: 100 });
+  awayCursor = { x: 350, y: 100 };
+  await awayHover.tick();
+  now += 250;
+  await awayHover.tick();
+  assert.deepEqual(emitted, ['elsewhere'], 'moving elsewhere and dwelling emits the new word');
+  assert.equal(awayHover.isHeldBySelection(), false, 'emitting a new hovered word clears selection hold');
+
+  // Staying away over blank space past selectionAwayHoldMs also clears the hold.
+  awayHover.holdForSelection({ x: 350, y: 100 });
+  awayCursor = { x: 100, y: 200 };
+  await awayHover.tick();
+  now += 3100;
+  await awayHover.tick();
+  assert.equal(awayHover.isHeldBySelection(), false, 'staying away past selectionAwayHoldMs clears the hold');
+  awayHover.stop();
+
   finished = true;
   console.log('Hover selection passed: in-flight probe dropped, hold until next press, drag not counted, expiry, own windows answer the trigger.');
 })().catch((error) => { console.error(error); process.exit(1); });

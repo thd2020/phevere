@@ -357,15 +357,24 @@ function setLastSelectionEvent(event: ContextEvent): void {
   const raw = typeof event.timestamp === 'number' && event.timestamp > 0 ? event.timestamp : Date.now();
   lastSelectionEvent = { ...event, timestamp: Math.max(raw, prev + 1) };
   lastSelectedText = event.text || '';
-  if (event.origin === 'selection' || event.origin === 'manual') hoverLookup?.holdForSelection();
+  if (event.origin === 'selection' || event.origin === 'manual') {
+    const point =
+      typeof event.x === 'number' && typeof event.y === 'number'
+        ? eventCoordSpace(event) === 'physical'
+          ? physicalToDip(event.x, event.y)
+          : { x: event.x, y: event.y }
+        : undefined;
+    hoverLookup?.holdForSelection(point);
+  }
 }
 
-/** A selection, or the pop-up it opened, outranks hover until the user clicks elsewhere. */
-function hoverYieldsToSelection(): boolean {
-  if (hoverLookup?.isHeldBySelection()) return true;
-  const ev = lastSelectionEvent;
-  if (!ev || (ev.origin !== 'selection' && ev.origin !== 'manual')) return false;
-  return popupWindows.some((win) => !win.isDestroyed() && win.isVisible());
+/** Hover yields only while an active selection still holds the spot the pointer is on. */
+function hoverYieldsToSelection(point?: { x: number; y: number } | null): boolean {
+  if (!hoverLookup) return false;
+  if (typeof hoverLookup.isPointHeldBySelection === 'function') {
+    return hoverLookup.isPointHeldBySelection(point);
+  }
+  return hoverLookup.isHeldBySelection();
 }
 
 /** Windows tray balloon; macOS / Linux Notification (displayBalloon is Win32-only). */
@@ -536,7 +545,12 @@ function onTriggerShortcutAfterSelection(): void {
       // Resting on a word longer than the selection window still means that word.
       readUnderPointer = left || now - ev.timestamp > TRIGGER_AFTER_SELECTION_MAX_MS;
     } else if (ev.origin === 'selection' || ev.origin === 'manual') {
-      readUnderPointer = left && !hover.isHeldBySelection();
+      readUnderPointer = left && (!hover.isHeldBySelection() || now - ev.timestamp > 3_000);
+      if (readUnderPointer) {
+        hover.clearSelectionHold?.();
+      } else {
+        hover.refreshSelectionHold?.();
+      }
     } else if (ev.origin === 'search') {
       // A word opened from a list (createDictionaryWindow) was never under the pointer.
       readUnderPointer = true;
@@ -2122,10 +2136,11 @@ function wireContextCaptureHubOnce(): void {
       return;
     }
 
-    // Hover must not replace the selected word, or the trigger and the strip show it instead.
-    if (event.origin === 'hover' && hoverYieldsToSelection()) {
+    // Hover must not replace a selection while the pointer is still on it.
+    if (event.origin === 'hover' && hoverYieldsToSelection({ x: event.x, y: event.y })) {
       return;
     }
+    if (event.origin === 'hover') hoverLookup?.clearSelectionHold?.();
 
     setLastSelectionEvent(event);
 
@@ -2693,9 +2708,9 @@ function ensureHoverLookup(): HoverLookupService {
       },
       onOwnWindow: askOwnWindowAt,
       isMouseDown: isPrimaryMouseDown,
+      wasMousePressed: primaryMousePressedSinceLastPoll,
       isBlocked: () =>
         isPrimaryMouseDown() ||
-        hoverYieldsToSelection() ||
         phevereWindowFocused(mainWindow, popupWindows, settingsWindow, ocrOverlayWindow, externalWindows),
       skipOcr: () => {
         if (getOcrStatus().needsPack) return true;
@@ -3003,7 +3018,9 @@ ipcMain.on('show-popup', (_event, { x, y, text }) => {
 ipcMain.on('in-page-hover', (_event, { x, y, text, requested }) => {
   const word = String(text || '').trim();
   if (!word || word.length > 64 || !hoverLookup?.isRunning()) return;
-  if (isPrimaryMouseDown() || hoverYieldsToSelection()) return;
+  const point = { x: Number(x) || 0, y: Number(y) || 0 };
+  if (isPrimaryMouseDown() || hoverYieldsToSelection(point)) return;
+  hoverLookup.clearSelectionHold();
   contextCaptureHub.emit({
     text: word,
     x: Number(x) || 0,

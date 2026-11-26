@@ -30,8 +30,12 @@ export interface HoverLookupOptions {
   isBlocked?: () => boolean;
   /** Primary button state; a press after a selection ends that selection's hold on hover. */
   isMouseDown?: () => boolean;
+  /** True if the primary mouse button was pressed between polls (catches fast clicks). */
+  wasMousePressed?: () => boolean;
   /** Longest a selection keeps hover quiet when no press is seen. */
   selectionHoldMs?: number;
+  /** Longest a selection holds off hover once the pointer moves away from it. */
+  selectionAwayHoldMs?: number;
   /**
    * A result counts only while the pointer is still this close (DIP) to where the dwell
    * started. UIA and OCR take hundreds of ms, and a word read after the pointer left
@@ -59,6 +63,7 @@ const DEFAULTS = {
    */
   ocrHalfWidthPx: 180,
   selectionHoldMs: 60_000,
+  selectionAwayHoldMs: 3_000,
   staleTolerancePx: 24,
 };
 
@@ -83,10 +88,12 @@ export class HoverLookupService {
   private generation = 0;
   private heldAt = 0;
   private heldSawRelease = false;
+  private heldPoint: { x: number; y: number } | null = null;
+  private heldLeftAt = 0;
   private readonly opts: Required<
-    Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'onOwnWindow' | 'skipOcr' | 'cursor' | 'isMouseDown'>
+    Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'onOwnWindow' | 'skipOcr' | 'cursor' | 'isMouseDown' | 'wasMousePressed'>
   > &
-    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'onOwnWindow' | 'skipOcr' | 'cursor' | 'isMouseDown'>;
+    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'onOwnWindow' | 'skipOcr' | 'cursor' | 'isMouseDown' | 'wasMousePressed'>;
 
   constructor(options: HoverLookupOptions = {}) {
     this.opts = { ...DEFAULTS, ...options };
@@ -121,37 +128,77 @@ export class HoverLookupService {
 
   /**
    * A text selection outranks hover. Drop any probe already running and stay quiet
-   * until the next mouse press (which clears or replaces the selection).
+   * near the selection until a click, a hover on another word, or moving away.
    */
-  holdForSelection(): void {
+  holdForSelection(point?: { x: number; y: number } | null): void {
     this.generation += 1;
     this.heldAt = Date.now();
+    this.heldLeftAt = 0;
+    this.heldPoint =
+      point && Number.isFinite(point.x) && Number.isFinite(point.y)
+        ? { x: point.x, y: point.y }
+        : this.cursorPoint();
     this.heldSawRelease = !this.opts.isMouseDown?.();
+    this.opts.wasMousePressed?.();
+  }
+
+  /** Clear any active selection hold so hover resumes immediately. */
+  clearSelectionHold(): void {
+    this.heldAt = 0;
+    this.heldSawRelease = false;
+    this.heldPoint = null;
+    this.heldLeftAt = 0;
+  }
+
+  /** Renew an active selection hold without changing its origin point. */
+  refreshSelectionHold(): void {
+    if (!this.isHeldBySelection()) return;
+    this.heldAt = Date.now();
   }
 
   /** True while the latest selection still holds hover off. */
-  isHeldBySelection(): boolean {
+  isHeldBySelection(now = Date.now()): boolean {
     if (!this.heldAt) return false;
-    if (Date.now() - this.heldAt > this.opts.selectionHoldMs) {
-      this.heldAt = 0;
+    if (now - this.heldAt > this.opts.selectionHoldMs) {
+      this.clearSelectionHold();
       return false;
     }
     return true;
   }
 
-  /** The press that ends a hold must start after the selection, not be the drag that made it. */
-  private watchSelectionHold(): boolean {
-    if (!this.isHeldBySelection()) return false;
+  /** True while hover at `point` is still close enough to the selection to yield to it. */
+  isPointHeldBySelection(point?: { x: number; y: number } | null, now = Date.now()): boolean {
+    if (!this.isHeldBySelection(now)) return false;
+    if (!this.heldPoint || !point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return true;
+    return Math.hypot(point.x - this.heldPoint.x, point.y - this.heldPoint.y) <= this.opts.staleTolerancePx;
+  }
+
+  /**
+   * Track the selection hold: clear on a new mouse press or after moving away long enough,
+   * block hovering near the selection, and allow probing once the cursor moves elsewhere.
+   */
+  private watchSelectionHold(pos = this.cursorPoint()): 'clear' | 'block' | 'probe' {
+    if (!this.isHeldBySelection()) return 'clear';
     const down = !!this.opts.isMouseDown?.();
-    if (!down) {
-      this.heldSawRelease = true;
-      return true;
+    const pressed = !!this.opts.wasMousePressed?.();
+    if (!down) this.heldSawRelease = true;
+    if ((this.heldSawRelease && down) || pressed) {
+      this.clearSelectionHold();
+      return 'clear';
     }
-    if (this.heldSawRelease) {
-      this.heldAt = 0;
-      return false;
+    if (!this.heldPoint) return 'block';
+    const away = Math.hypot(pos.x - this.heldPoint.x, pos.y - this.heldPoint.y) > this.opts.staleTolerancePx;
+    if (!away) {
+      this.heldLeftAt = 0;
+      return 'block';
     }
-    return true;
+    const now = Date.now();
+    if (!this.heldLeftAt) this.heldLeftAt = now;
+    if (now - this.heldLeftAt >= this.opts.selectionAwayHoldMs) {
+      this.clearSelectionHold();
+      return 'clear';
+    }
+    return 'probe';
   }
 
   /** True while the pointer is still on the spot (DIP) a hover word was read at. */
@@ -206,9 +253,8 @@ export class HoverLookupService {
 
     const pos = this.cursorPoint();
 
-    // A trigger pressed during a selection hold or a drag is not carried over to
-    // wherever the pointer is once it ends.
-    if (this.watchSelectionHold()) {
+    // A trigger pressed while still holding near a selection is not carried over.
+    if (this.watchSelectionHold(pos) === 'block') {
       this.forcedUntil = 0;
       this.resetDwell(pos.x, pos.y);
       return;
@@ -293,8 +339,8 @@ export class HoverLookupService {
     }
 
     if (!text) return;
-    // UIA and OCR take hundreds of ms; a selection made meanwhile wins.
-    if (generation !== this.generation || this.isHeldBySelection() || this.opts.isBlocked?.()) return;
+    // UIA and OCR take hundreds of ms; a selection made meanwhile near this spot wins.
+    if (generation !== this.generation || this.isPointHeldBySelection({ x: anchorX, y: anchorY }) || this.opts.isBlocked?.()) return;
     // The pointer left while UIA or OCR ran. The dwell at the new spot looks that word up.
     if (!this.pointerNear(anchorX, anchorY)) return;
     // Jitter inside one word restarts the dwell; that must not move the strip. The same
@@ -312,6 +358,7 @@ export class HoverLookupService {
       return;
     }
 
+    this.clearSelectionHold();
     this.lastEmitText = text;
     this.lastEmitAt = now;
     this.lastEmitPoint = { x: anchorX, y: anchorY };
