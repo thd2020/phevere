@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.4] - 2026-11-27
+
+### Changed
+
+- Synonym questions use familiar words and appear less often (2026-11-26): "Closest in meaning" and "Opposite in meaning" questions now wait until a word is past its first learning stage, prefer everyday answers and distractors from the core word books or words you already know, skip sets that only have rare words, and stay within a tenth of a study session. Desktop and phone alike.
+
+### Fixed
+
+- Hover replaces a selected word right away (2026-11-26): moving the pointer away from a selected word and resting on another word now looks up the hovered word as soon as the hover delay finishes, instead of staying stuck on the old selection for up to a minute or while its pop-up is open. A click between poll ticks clears the selection hold as well, and shortcuts stop holding the old selection three seconds after you move away. Desktop only.
+- Regular word forms redirect to their base word (2026-11-26): derived forms such as past tenses, plurals and third-person verbs now open directly on the base word's entry instead of showing the base word's meanings under the inflected spelling. This also covers two-step spelling chains ("superceded" → "supercede" → "supersede"), regular words in all capitals ("WALKS" → "walk"), and forms that have a minor sense in another part of speech ("gleaned" → "glean", "pledged" → "pledge"). Cached lookups from earlier versions refresh automatically. Desktop and phone alike.
+- Faster lookups and translations on slow connections (2026-11-26): desktop lookups now use Electron's own network stack once the app is ready, a single slow connection no longer locks timeouts at 15 seconds for the next lookups, offline dictionary packs show immediately without waiting on online form checks, and Wiktionary no longer fetches the same page twice. When Google Translate rate-limits a request, translation now switches straight to MyMemory instead of stalling.
+
 ## [4.3.3] - 2026-11-08
 
 ### Changed
@@ -742,7 +754,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.3...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.4...HEAD
+[4.3.4]: https://github.com/thd2020/phevere/compare/v4.3.3...v4.3.4
 [4.3.3]: https://github.com/thd2020/phevere/compare/v4.3.2...v4.3.3
 [4.3.2]: https://github.com/thd2020/phevere/compare/v4.3.1...v4.3.2
 [4.3.1]: https://github.com/thd2020/phevere/compare/v4.3.0...v4.3.1
