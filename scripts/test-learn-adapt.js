@@ -37,7 +37,7 @@ new Function('module', 'exports', 'require', bundle)(mod, mod.exports, require);
 const core = mod.exports;
 
 const DAY = 86_400_000;
-const now = new Date(2026, 10, 5, 9).getTime();
+const now = Date.UTC(2026, 10, 5, 1);
 
 /* ------------------------------------------------------------------ stages */
 {
@@ -876,10 +876,20 @@ function simulate() {
   // every word the ladder allows; new and learning words are not typed whoever the learner is.)
   assert.ok(weak.spellShare < avg.spellShare - 0.02 && weak.spellShare < strong.spellShare - 0.02, `spelling share ${weak.spellShare.toFixed(2)}, against ${avg.spellShare.toFixed(2)} and ${strong.spellShare.toFixed(2)}`);
   assert.ok(weak.neverTyped > 0.1, `not every word has to be spelled: ${weak.neverTyped.toFixed(2)} of a weak speller's words never were`);
-  // The learner model learns the weak speller: typed answers after a fortnight go right about as often as aimed.
+  // The learner model learns the weak speller: spelling answers after a fortnight stay near the aim,
+  // and when raw typing is still asked enough to measure (15+ items), it clears 60%; otherwise
+  // letter tiles carry the spelling work.
+  const weakSpell = weak.asked.filter((a) => a.day >= 14 && core.kindSkill(a.kind) === 'spelling');
+  const weakSpellAcc = weakSpell.filter((a) => a.right).length / Math.max(1, weakSpell.length);
+  assert.ok(weakSpellAcc > 0.68, `weak speller's spelling answers right ${weakSpellAcc.toFixed(2)} once the model knows them`);
   const weakTyped = weak.asked.filter((a) => a.day >= 14 && (a.kind === 'recall' || a.kind === 'cloze'));
   const weakTypedAcc = weakTyped.filter((a) => a.right).length / Math.max(1, weakTyped.length);
-  assert.ok(weakTypedAcc > 0.6, `weak speller's typed answers right ${weakTypedAcc.toFixed(2)} once the model knows them`);
+  if (weakTyped.length >= 15) {
+    assert.ok(weakTypedAcc > 0.6, `weak speller's typed answers right ${weakTypedAcc.toFixed(2)} once the model knows them`);
+  } else {
+    const weakTiles = weak.asked.filter((a) => a.day >= 14 && a.kind === 'spell-tiles').length;
+    assert.ok(weakTiles >= 100, `weak speller moved spelling to letter tiles (${weakTiles} tiles, ${weakTyped.length} typed)`);
+  }
 
   // New words a day: the pace is learned after three days, and the count varies with the load.
   const withPace = avg.daily.filter((d) => d.pace);
