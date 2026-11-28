@@ -8,9 +8,9 @@ const path = require('path');
 const ALL = [
   'notebook-views', 'desktop-map-bundle', 'morphology', 'review', 'vocab-sync', 'wordbooks', 'vocab-lang', 'vocab-lemma', 'notebook-csv',
   'sense-images', 'picture-loading', 'sense-frequency', 'pronunciation', 'inflections', 'lang-detect', 'multilingual-sources', 'sense-notes',
-  'etymology-sources', 'etymology-cache', 'etymology-availability', 'etymology-headword', 'etymology-popup',
+  'etymology-sources', 'source-cache', 'etymology-cache', 'etymology-availability', 'etymology-headword', 'etymology-popup',
   'ocr-text', 'ocr-layout', 'ocr-translate', 'scan-translate-requests', 'ocr-pack', 'speech-stream', 'hover-selection', 'hover-strip','native-selection-repeat',
-  'popup-opening', 'popup-retrigger', 'popup-sizing', 'popup-sense-pictures', 'mobile-regressions', 'desktop-diagnostics', 'installer-audio-cli',
+  'popup-opening', 'popup-retrigger', 'popup-sizing', 'popup-sense-pictures', 'mobile-regressions', 'desktop-diagnostics', 'node-http-fallback', 'installer-audio-cli',
   'sense-text', 'definition-merge', 'word-sources', 'notebook-pages', 'book-file', 'plural-forms', 'morpheme', 'word-suggest', 'learn-session', 'learn-adapt', 'word-forms', 'lookup-entry', 'slow-network', 'translation-case', 'settings-about', 'i18n-strings', 'i18n-catalog',
   'installer-audio', 'native-lifecycle', 'android-candidate-workflow', 'updater', 'mobile-update',
 ];

@@ -33,11 +33,58 @@ interface HttpResponseLike {
   arrayBuffer(): Promise<ArrayBuffer>;
 }
 
+let electronNetBroken = false;
+let watchedApp: object | null = null;
+const utilityCrashTimes: number[] = [];
+const UTILITY_CRASH_WINDOW_MS = 30_000;
+const UTILITY_CRASH_THRESHOLD = 3;
+
+interface ChildProcessGoneDetails {
+  type?: string;
+  reason?: string;
+  exitCode?: number;
+  serviceName?: string;
+}
+
+interface ElectronAppLike {
+  isReady?: () => boolean;
+  on?: (event: string, listener: (_event: unknown, details: ChildProcessGoneDetails) => void) => void;
+}
+
+function installElectronNetHealthWatch(appObj: ElectronAppLike | undefined): void {
+  if (!appObj || typeof appObj.on !== 'function' || watchedApp === appObj) return;
+  watchedApp = appObj;
+  appObj.on('child-process-gone', (_event, details) => {
+    if (details?.type !== 'Utility') return;
+    if (details.reason !== 'crashed' && details.reason !== 'killed') return;
+    if (details.serviceName && /NetworkService/i.test(details.serviceName)) {
+      electronNetBroken = true;
+      return;
+    }
+    const now = Date.now();
+    utilityCrashTimes.push(now);
+    while (utilityCrashTimes.length && now - utilityCrashTimes[0] > UTILITY_CRASH_WINDOW_MS) {
+      utilityCrashTimes.shift();
+    }
+    if (utilityCrashTimes.length >= UTILITY_CRASH_THRESHOLD) {
+      electronNetBroken = true;
+    }
+  });
+}
+
+export function _resetElectronNetHealthForTest(): void {
+  electronNetBroken = false;
+  watchedApp = null;
+  utilityCrashTimes.length = 0;
+}
+
 function electronFetch(): NetFetch | null {
+  if (electronNetBroken) return null;
   try {
     // Use Chromium's network stack once Electron is ready (HTTP/2, TLS 1.3 session cache, OS proxy).
-    const electron = require('electron') as { app?: { isReady?: () => boolean }; net?: { fetch?: NetFetch } };
-    if (electron?.app?.isReady?.() && typeof electron.net?.fetch === 'function') {
+    const electron = require('electron') as { app?: ElectronAppLike; net?: { fetch?: NetFetch } };
+    installElectronNetHealthWatch(electron?.app);
+    if (!electronNetBroken && electron?.app?.isReady?.() && typeof electron.net?.fetch === 'function') {
       return electron.net.fetch.bind(electron.net);
     }
   } catch {
@@ -50,36 +97,12 @@ function agentFor(parsed: URL): http.Agent {
   return parsed.protocol === 'http:' ? httpAgent : httpsAgent;
 }
 
-async function rawFetch(url: string, options?: HttpRequestInit): Promise<HttpResponseLike> {
-  const timeoutMs = options?.timeoutMs ?? 9000;
-  const headers: Record<string, string> = {
-    'User-Agent': DEFAULT_UA,
-    ...(options?.headers || {}),
-  };
-  const netFetch = electronFetch();
-  if (netFetch) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      return await withTimeout(
-        netFetch(url, {
-          method: options?.method || 'GET',
-          body: options?.body,
-          headers,
-          signal: controller.signal,
-        }),
-        timeoutMs + 500,
-        `fetch ${url.slice(0, 64)}`,
-      );
-    } catch (error) {
-      if (error instanceof DictionaryError) throw error;
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      const aborted = controller.signal.aborted || /abort|timed out|timeout|network timeout/i.test(msg);
-      throw new DictionaryError(`Request failed: ${msg}`, aborted ? 'TIMEOUT' : 'NETWORK_ERROR', true);
-    } finally {
-      clearTimeout(timer);
-    }
-  }
+async function nodeFetch(
+  url: string,
+  options: HttpRequestInit | undefined,
+  timeoutMs: number,
+  headers: Record<string, string>,
+): Promise<HttpResponseLike> {
   try {
     return await withTimeout(
       fetch(url, {
@@ -98,6 +121,52 @@ async function rawFetch(url: string, options?: HttpRequestInit): Promise<HttpRes
     const aborted = /abort|timed out|timeout|network timeout/i.test(msg);
     throw new DictionaryError(`Request failed: ${msg}`, aborted ? 'TIMEOUT' : 'NETWORK_ERROR', true);
   }
+}
+
+async function rawFetch(url: string, options?: HttpRequestInit): Promise<HttpResponseLike> {
+  const timeoutMs = options?.timeoutMs ?? 9000;
+  const headers: Record<string, string> = {
+    'User-Agent': DEFAULT_UA,
+    ...(options?.headers || {}),
+  };
+  const netFetch = electronFetch();
+  if (netFetch) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let electronErr: unknown = null;
+    let failedInElectron = false;
+    try {
+      return await withTimeout(
+        netFetch(url, {
+          method: options?.method || 'GET',
+          body: options?.body,
+          headers,
+          signal: controller.signal,
+        }),
+        timeoutMs + 500,
+        `fetch ${url.slice(0, 64)}`,
+      );
+    } catch (error) {
+      failedInElectron = true;
+      electronErr = error;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (failedInElectron) {
+      try {
+        const res = await nodeFetch(url, options, timeoutMs, headers);
+        // Chromium's network utility process is wedged while OS networking works.
+        electronNetBroken = true;
+        return res;
+      } catch {
+        if (electronErr instanceof DictionaryError) throw electronErr;
+        const msg = electronErr instanceof Error ? electronErr.message : 'Unknown error';
+        const aborted = controller.signal.aborted || /abort|timed out|timeout|network timeout/i.test(msg);
+        throw new DictionaryError(`Request failed: ${msg}`, aborted ? 'TIMEOUT' : 'NETWORK_ERROR', true);
+      }
+    }
+  }
+  return nodeFetch(url, options, timeoutMs, headers);
 }
 
 export function createNodeHttpClient(): HttpClient {

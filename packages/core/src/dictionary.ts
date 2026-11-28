@@ -171,11 +171,8 @@ const CORE_WAIT_WITHOUT_LOCAL_MS = 2500;
 const FIRST_PAINT_GRACE_MS = 200;
 /** Late pieces (translation, IPA, etymology) that land together go out as one update. */
 const UPDATE_COALESCE_MS = 120;
-/** A result missing a failed source is cached, but only this long, so the source gets another try. */
-const PARTIAL_CACHE_TTL_MS = 10 * 60 * 1000;
-/** Persistent entries are kept this long. */
+/** Persistent fetched source entries are kept this long. */
 const PERSISTED_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
 /** Longest wait for the tagged page that says whether a word is a form of another. */
 const FORM_CHECK_MS = 3500;
 /** Longest a result that may be a form is held back while that page is on its way. */
@@ -201,8 +198,6 @@ const SENTENCE_GRACE_MS = 300;
  * a slow connection. Without an answer the translation starts in lower case, as its source does.
  */
 const TRANSLATION_CASE_MS = 800;
-/** A translation engine that gave no answer at all is asked last for this long. */
-const TRANSLATION_DOWN_MS = 5 * 60 * 1000;
 /**
  * How long the exact-title check runs alone before the bare word's lookup starts beside it, when no
  * round trip to Wiktionary has been measured yet; a measured round trip replaces it.
@@ -210,25 +205,23 @@ const TRANSLATION_DOWN_MS = 5 * 60 * 1000;
 const EXACT_TITLE_HEAD_START_MS = 500;
 /** Whether Wiktionary has a page titled exactly as typed ("etc.") is kept this long. */
 const EXACT_TITLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-/**
- * Stored on every result saved since forms opened as their word (2026-11-04); a saved result
- * without it is looked up again once. A mark, not a date: partial results are saved with an
- * earlier time so they expire sooner.
- */
-const FORM_RULES = 3;
 
-/** A sense of any source that points at another headword: "plural of paparazzo", "A paparazzo." */
-function pointsElsewhere(result: DictionaryResult | null | undefined): boolean {
-  const word = foldLookupKey(String(result?.word || ''));
-  return (result?.definitions || []).some((d) => {
-    const text = stripGlossText(String(d?.meaning || ''));
-    const target = formOfGlossLemma(text) || /^(?:an?|the)\s+([\p{L}'’-]+)\.?$/iu.exec(text)?.[1] || '';
-    return !!target && foldLookupKey(target) !== word;
-  });
+interface CachedSourceEntry {
+  status: 'ok' | 'empty';
+  data?: unknown;
+  ts: number;
 }
-/** A source whose host keeps failing is skipped for this long, doubling per further failure. */
-const SOURCE_DOWN_BASE_MS = 3 * 60 * 1000;
-const SOURCE_DOWN_MAX_MS = 30 * 60 * 1000;
+
+interface WordSourceBucket {
+  v: 2;
+  sources: Record<string, CachedSourceEntry>;
+}
+
+class EtymologyUnavailableError extends Error {
+  constructor(public readonly info: EtymologyUnavailable) {
+    super(info.code || info.status);
+  }
+}
 
 type LookupHolder = { current?: DictionaryResult };
 export type TranslationProvider = 'auto' | 'youdao' | 'deepl' | 'google' | 'mymemory';
@@ -406,27 +399,20 @@ export class DictionaryService extends BaseService {
   private static readonly WIKIMEDIA_USER_AGENT =
     'Phevere/1.0 (https://github.com/thd2020/phevere; desktop dictionary)';
 
-  private cache = new Map<string, { result: DictionaryResult; timestamp: number; ttl?: number }>();
-  private cacheTimeout = 24 * 60 * 60 * 1000; // 24 hours
   /**
    * Lookups still filling in (translation, etymology, IPA pending). A second request for
    * the same key gets the latest partial result and joins the remaining updates.
    */
   private inflight = new Map<string, { latest?: DictionaryResult; listeners: Set<(r: DictionaryResult) => void> }>();
-  /** Consecutive network failures per source; a source that keeps failing is skipped for a while. */
-  private sourceHealth = new Map<string, { fails: number; downUntil: number }>();
-  /** Skip Google gtx while it is 429ing; MyMemory still runs. */
-  private googleGtxCoolUntil = 0;
-  /** Translation engines that gave no answer at all lately, and until when they go last. */
-  private translationDownUntil = new Map<string, number>();
   private cmuWarm = setTimeout(() => warmCmuIpa(), 0);
-  /** A failed remote detection pauses it, so a blocked host does not slow every lookup. */
-  private remoteDetectCoolUntil = 0;
   private remoteDetectMemo = new Map<string, string>();
-  /** Per-source layer: a Datamuse hit must not freeze a Free Dictionary timeout for 24h. */
-  private sourceLayer = new Map<string, { status: 'ok' | 'empty' | 'fail'; data?: unknown; ts: number }>();
+  /** Unified per-word cache bucket storing only fetched source results (`ok` or confirmed `empty`). */
+  private wordBuckets = new Map<string, WordSourceBucket>();
+  private bucketLoads = new Map<string, Promise<WordSourceBucket>>();
+  private bucketSaveChains = new Map<string, Promise<void>>();
+  private dirtyBuckets = new Set<string>();
+  private bucketFlushScheduled = false;
   private sourceEmptyTtlMs = 6 * 60 * 60 * 1000;
-  private sourceFailBackoffMs = 8_000;
   private apiKey: string | null = null;
   private deeplApiKey: string | null = null;
   // Premium/aggregator/specialized credentials
@@ -473,17 +459,6 @@ export class DictionaryService extends BaseService {
     this.updateSourceAvailability();
     // Sense pictures read the same Wiktionary page the lookup already fetched and cached.
     registerWiktionaryWikitextSource((word) => this.getWiktionaryWikitext(word));
-    // The connection answering again after a silence, or the platform reporting a network change,
-    // ends every skip: a skip that began while nothing could be reached says nothing about the
-    // sources now, and a phone back online gets its definitions on the first word. One host
-    // falling silent while the others answer (Google blocked) ends none of them.
-    let seen = networkEpoch();
-    onNetChange(() => {
-      if (networkEpoch() === seen) return;
-      seen = networkEpoch();
-      this.sourceHealth.clear();
-      this.translationDownUntil.clear();
-    });
   }
 
   /**
@@ -727,11 +702,10 @@ export class DictionaryService extends BaseService {
       const sl = sourceLanguage && sourceLanguage !== 'auto' ? this.isoLang(sourceLanguage) : 'auto';
       const tl = this.isoLang(targetLanguage);
       const q = encodeURIComponent(normalized);
-      const urls: string[] = [];
-      if (Date.now() >= this.googleGtxCoolUntil) {
-        urls.push(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&dt=t&q=${q}`);
-      }
-      urls.push(`https://translate.googleapis.com/translate_a/t?client=dict-chrome-ex&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&q=${q}`);
+      const urls = [
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&dt=t&q=${q}`,
+        `https://translate.googleapis.com/translate_a/t?client=dict-chrome-ex&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&q=${q}`,
+      ];
 
       console.log(`Unofficial translate`, { to: tl, from: sl, chars: normalized.length, paths: urls.length });
 
@@ -743,16 +717,13 @@ export class DictionaryService extends BaseService {
         } catch (error) {
           const code = error instanceof DictionaryError ? error.code : '';
           if (code === 'HTTP_429') {
-            this.googleGtxCoolUntil = Date.now() + 90_000;
-            this.noteTranslationDown('google');
-            console.warn('Google Translate rate-limited; cooling down and failing over');
+            console.warn('Google Translate rate-limited; failing over immediately');
             return null;
           }
           console.warn('Unofficial Google Translate path failed', { url: url.slice(0, 64), error });
           // No answer at all (blocked, timed out): the other path is on the same host, so asking it
           // too would only double the wait before the next engine is tried.
           if (!/^HTTP_\d{3}$/.test(code)) {
-            this.noteTranslationDown('google');
             return null;
           }
         }
@@ -788,7 +759,6 @@ export class DictionaryService extends BaseService {
       };
     } catch (error) {
       console.warn('MyMemory translation failed:', error);
-      if (!(error instanceof DictionaryError && /^HTTP_\d{3}$/.test(error.code))) this.noteTranslationDown('mymemory');
       return null;
     }
   }
@@ -961,68 +931,11 @@ export class DictionaryService extends BaseService {
       // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
       const txProvider = opts?.translationProvider || 'auto';
-      // Switching on a Wiktionary edition must not be hidden by a result cached before it. ipa:2:
-      // results cached before pronunciations were tidied (tidyPronunciations) and one language was labelled.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2|ipa:2|senses:2${editionsOn ? `|wikt:${editionsOn}` : ''}${this.offlinePacks ? `|packs:${this.offlinePacks}` : ''}${preferEnglishEntry ? '|en-first' : ''}${hinted ? '|chosen' : ''}`);
-
-      const remember = (r: DictionaryResult) => {
-        if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
-        // A failed or missing source is usually a flaky host. Keep the result, but
-        // only briefly, so the next lookup after that tries the source again.
-        const partial = this.isIncompleteSourceCache(r);
-        const ttl = partial ? PARTIAL_CACHE_TTL_MS : this.cacheTimeout;
-        const now = Date.now();
-        r.metadata = { ...(r.metadata || {}), formRules: FORM_RULES };
-        this.cache.set(cacheKey, { result: r, timestamp: now, ttl });
-        try {
-          // Failed etymology hosts get another chance after ten minutes, even
-          // after a restart. Other partial results keep the existing disk TTL.
-          const partialPersistTtl = r.metadata?.etymologyUnavailable?.length ? PARTIAL_CACHE_TTL_MS : PARTIAL_PERSIST_TTL_MS;
-          const savedAt = partial ? now - (PERSISTED_CACHE_TTL_MS - partialPersistTtl) : now;
-          void Promise.resolve(getLookupCache()?.set(cacheKey, r, savedAt)).catch((): undefined => undefined);
-        } catch {
-          /* persistence optional */
-        }
-      };
-
-      const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < (cached.ttl ?? this.cacheTimeout)) {
-        console.log(`Cache hit (${Date.now() - startTime}ms)`);
-        return cached.result;
-      }
-      if (cached) this.cache.delete(cacheKey);
-
-      const store = getLookupCache();
-      if (store) {
-        try {
-          const saved = await store.get(cacheKey);
-          const value = saved?.value as DictionaryResult | undefined;
-          // A result without IPA is saved to expire within a day (see remember). One that has
-          // longer left was saved before that rule and is looked up again.
-          const left = saved ? PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt) : 0;
-          const staleNoIpa = this.lacksIpa(value) && left > PARTIAL_PERSIST_TTL_MS;
-          // Saved before forms were shown as the word they are a form of, or never checked by the
-          // tagged page: looked up again ("paparazzi" kept as "A paparazzo." from the Free Dictionary).
-          const meta = value?.metadata || {};
-          const stalePlural =
-            (!!value && !meta.formChecked && !meta.formFrom && (mayBeFormOf(value) || pointsElsewhere(value) || !!meta.lemmaFallback || meta.formRules !== FORM_RULES)) ||
-            // A form opened as its lemma before forms said what they are ("ran · past tense of run").
-            (!!meta.formFrom && !meta.formLineChecked);
-          if (saved && value && left > 0 && !staleNoIpa && !stalePlural && !this.isUncacheableResult(value)) {
-            const remaining = PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt);
-            const ttl = this.isIncompleteSourceCache(value) ? Math.min(PARTIAL_CACHE_TTL_MS, remaining) : this.cacheTimeout;
-            this.cache.set(cacheKey, { result: value, timestamp: Date.now(), ttl });
-            console.log(`Persistent cache hit (${Date.now() - startTime}ms)`);
-            return value;
-          }
-        } catch {
-          /* persistence optional */
-        }
-      }
+      const flightKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:${opts?.skipEtymology ? 'skip' : 'full'}${editionsOn ? `|wikt:${editionsOn}` : ''}${this.offlinePacks ? `|packs:${this.offlinePacks}` : ''}${preferEnglishEntry ? '|en-first' : ''}${hinted ? '|chosen' : ''}`);
 
       // Same word already loading: hand back what it has and send this caller the rest.
-      const running = this.inflight.get(cacheKey);
+      const running = this.inflight.get(flightKey);
       if (running) {
         if (opts?.onUpdate) running.listeners.add(opts.onUpdate);
         if (running.latest && this.hasRealDefinitions(running.latest)) {
@@ -1033,10 +946,10 @@ export class DictionaryService extends BaseService {
       const flight = running || { listeners: new Set<(r: DictionaryResult) => void>() };
       if (!running) {
         if (opts?.onUpdate) flight.listeners.add(opts.onUpdate);
-        this.inflight.set(cacheKey, flight);
+        this.inflight.set(flightKey, flight);
         // Safety net: a background step that never settles must not pin the entry.
         setTimeout(() => {
-          if (this.inflight.get(cacheKey) === flight) this.inflight.delete(cacheKey);
+          if (this.inflight.get(flightKey) === flight) this.inflight.delete(flightKey);
         }, LOOKUP_DEADLINE_MS * 2);
       }
       const decorate = (r: DictionaryResult): DictionaryResult => {
@@ -1061,9 +974,8 @@ export class DictionaryService extends BaseService {
         originalSelection: query.raw,
         onUpdate: (r) => {
           decorate(r);
-          remember(r);
           flight.latest = r;
-          if (!this.isStillFilling(r) && this.inflight.get(cacheKey) === flight) this.inflight.delete(cacheKey);
+          if (!this.isStillFilling(r) && this.inflight.get(flightKey) === flight) this.inflight.delete(flightKey);
           for (const listener of flight.listeners) {
             try {
               listener(r);
@@ -1114,11 +1026,10 @@ export class DictionaryService extends BaseService {
       }
 
       decorate(result);
-      remember(result);
       if (this.hasRealDefinitions(result) && (!flight.latest || !this.hasRealDefinitions(flight.latest))) {
         flight.latest = result;
       }
-      if (!this.isStillFilling(result) && this.inflight.get(cacheKey) === flight) this.inflight.delete(cacheKey);
+      if (!this.isStillFilling(result) && this.inflight.get(flightKey) === flight) this.inflight.delete(flightKey);
       return result;
     }
   }
@@ -1270,7 +1181,20 @@ export class DictionaryService extends BaseService {
     const depth = opts?.formRedirectDepth || 0;
     const originWord = opts?.formFrom || query.trimmed;
     const early: Promise<string | null> | null =
-      !opts?.noFormRedirect && depth < 2 && kaikkiOn ? withBudget(formOrProper(), FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, 'form-of') : null;
+      !opts?.noFormRedirect && depth < 2 && kaikkiOn
+        ? this.cachedSource(
+            'formOf',
+            `${lang}:${headword}`,
+            async () => ({
+              lemma: await withBudget(formOrProper(), FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, 'form-of'),
+            }),
+            () => true,
+            query.trimmed,
+          ).then((r) => {
+            if (r.error) throw r.error;
+            return (r.data as { lemma: string | null }).lemma;
+          })
+        : null;
     // Senses from an offline pack are there to show at once. They wait for the tagged page only as
     // long as the round trips measured so far say it needs (FORM_HOLD_MS on a normal network), not
     // as long as a connection that has not answered yet might take: dead or slow, it looks the same.
@@ -1555,46 +1479,9 @@ export class DictionaryService extends BaseService {
     return { ...result, definitions };
   }
 
-  private isUncacheableResult(result?: DictionaryResult): boolean {
-    if (!result) return true;
-    if (!this.hasRealDefinitions(result)) return true;
-    const defs = result.definitions || [];
-    return defs.length > 0 && defs.every((d) => d.source === 'Timeout' || isTimeoutMeaning(d.meaning));
-  }
-
-  /**
-   * Whole-result cache is only final when every *expected* source has a terminal
-   * ok/empty status. A Datamuse hit must not freeze a missing Wiktionary layer.
-   */
   /** Translation, etymology or pronunciation still on the way; the result will be updated. */
   private isStillFilling(result?: DictionaryResult): boolean {
     return !!(result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation || result?.metadata?.pendingPronunciation);
-  }
-
-  /**
-   * An English word with senses but no IPA: a source that transcribes it was down, or the
-   * result predates the Datamuse pronunciation. Kept a day at most, so it gets its IPA later.
-   */
-  private lacksIpa(result?: DictionaryResult): boolean {
-    if (!result || result.detectedLanguage !== 'en' || /\s/.test(String(result.word || '').trim())) return false;
-    if (!(result.definitions || []).some((d) => d.source !== 'Fallback')) return false;
-    return !(result.pronunciations || []).some((p) => p.ipa) && !String(result.pronunciation || '').trim();
-  }
-
-  private isIncompleteSourceCache(result?: DictionaryResult): boolean {
-    if (result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation) return true;
-    if (this.lacksIpa(result)) return true;
-    if (result?.metadata?.etymologyUnavailable?.length) return true;
-    if (!(result?.translations || []).some((t) => (t.text || '').trim())) return true;
-    const st = result?.metadata?.sourceStatus;
-    if (!st || typeof st !== 'object') return true;
-    const values = st as Record<string, string>;
-    if (Object.values(values).some((v) => v === 'fail')) return true;
-    const expected = result?.metadata?.expectedSources;
-    if (Array.isArray(expected) && expected.length) {
-      return expected.some((k) => !values[k] || values[k] === 'fail');
-    }
-    return false;
   }
 
   private decorateMatchedResult(
@@ -1768,32 +1655,80 @@ export class DictionaryService extends BaseService {
     ].join('#');
   }
 
-  /** True while a source's host is being skipped after repeated network failures. */
-  private isSourceDown(source: string): boolean {
-    const h = this.sourceHealth.get(source);
-    return !!h && h.downUntil > Date.now();
+  private sourceBucketKey(word: string): string {
+    const k = foldLookupKey(word) || String(word || '').trim().toLowerCase();
+    return `src-bucket:v2:${k}`;
   }
 
-  private noteSourceResult(source: string, error?: unknown): void {
-    const networkFailure =
-      !!error && (!(error instanceof DictionaryError) || error.retryable || /TIMEOUT|NETWORK/.test(error.code));
-    if (!networkFailure) {
-      this.sourceHealth.delete(source);
-      return;
-    }
-    const h = this.sourceHealth.get(source) || { fails: 0, downUntil: 0 };
-    // Requests already in flight when the skip began report late; they are the same outage.
-    if (h.downUntil > Date.now()) return;
-    h.fails += 1;
-    // Only a host that fails while others answer is skipped. When nothing answers at all (no
-    // network, Wi-Fi without internet), every source fails together, and skipping them would keep
-    // them skipped after the network is back; the lookup's own budgets cope with a dead connection.
-    if (h.fails >= 2 && !connectionSilent()) {
-      const backoff = Math.min(SOURCE_DOWN_MAX_MS, SOURCE_DOWN_BASE_MS * 2 ** (h.fails - 2));
-      h.downUntil = Date.now() + backoff;
-      console.warn(`${source} keeps failing; skipping it for ${Math.round(backoff / 1000)}s`);
-    }
-    this.sourceHealth.set(source, h);
+  private sourceEntryKey(source: string, word: string): string {
+    return `${source}:${isCapitalised(word) ? word.trim() : foldLatinHeadword(word)}`;
+  }
+
+  private async loadWordBucket(bucketKey: string): Promise<WordSourceBucket> {
+    const mem = this.wordBuckets.get(bucketKey);
+    if (mem) return mem;
+    const loading = this.bucketLoads.get(bucketKey);
+    if (loading) return loading;
+    const p = (async (): Promise<WordSourceBucket> => {
+      const store = getLookupCache();
+      if (store) {
+        try {
+          const saved = await store.get(bucketKey);
+          const val = saved?.value as WordSourceBucket | undefined;
+          if (val && val.v === 2 && val.sources && typeof val.sources === 'object') {
+            this.wordBuckets.set(bucketKey, val);
+            return val;
+          }
+        } catch {
+          /* persistence optional */
+        }
+      }
+      const fresh: WordSourceBucket = { v: 2, sources: {} };
+      if (!this.wordBuckets.has(bucketKey)) this.wordBuckets.set(bucketKey, fresh);
+      return this.wordBuckets.get(bucketKey)!;
+    })().finally(() => {
+      this.bucketLoads.delete(bucketKey);
+    });
+    this.bucketLoads.set(bucketKey, p);
+    return p;
+  }
+
+  private persistWordBucket(bucketKey: string): void {
+    const store = getLookupCache();
+    if (!store) return;
+    this.dirtyBuckets.add(bucketKey);
+    if (this.bucketFlushScheduled) return;
+    this.bucketFlushScheduled = true;
+    const scheduleFlush = typeof queueMicrotask === 'function' ? queueMicrotask : (fn: () => void): void => void Promise.resolve().then(fn);
+    scheduleFlush(() => {
+      this.bucketFlushScheduled = false;
+      const keys = Array.from(this.dirtyBuckets);
+      this.dirtyBuckets.clear();
+      for (const k of keys) {
+        const bucket = this.wordBuckets.get(k);
+        if (!bucket) continue;
+        const snapshot: WordSourceBucket = { v: 2, sources: { ...bucket.sources } };
+        const prev = this.bucketSaveChains.get(k) || Promise.resolve();
+        const next = prev
+          .then(() => Promise.resolve(store.set(k, snapshot, Date.now())))
+          .catch((): undefined => undefined)
+          .finally(() => {
+            if (this.bucketSaveChains.get(k) === next) this.bucketSaveChains.delete(k);
+          });
+        this.bucketSaveChains.set(k, next);
+      }
+    });
+  }
+
+  private hasFreshSource(source: string, slotKey: string, bucketWord?: string, now = Date.now()): boolean {
+    const bKey = this.sourceBucketKey(bucketWord || slotKey);
+    const bucket = this.wordBuckets.get(bKey);
+    if (!bucket) return false;
+    const hit = bucket.sources[this.sourceEntryKey(source, slotKey)];
+    if (!hit) return false;
+    if (hit.status === 'ok') return now - hit.ts < PERSISTED_CACHE_TTL_MS;
+    if (hit.status === 'empty') return now - hit.ts < this.sourceEmptyTtlMs;
+    return false;
   }
 
   private async cachedSource<T>(
@@ -1801,33 +1736,31 @@ export class DictionaryService extends BaseService {
     word: string,
     fn: () => Promise<T>,
     useful: (data: T) => boolean,
-  ): Promise<{ type: string; data?: T; error?: unknown; status: 'ok' | 'empty' | 'fail' | 'skip' }> {
-    const key = `${source}:${isCapitalised(word) ? word.trim() : foldLatinHeadword(word)}`;
+    bucketWord?: string,
+    onMiss?: () => void,
+  ): Promise<{ type: string; data?: T; error?: unknown; status: 'ok' | 'empty' | 'fail' | 'skip'; fromCache?: boolean }> {
+    const bKey = this.sourceBucketKey(bucketWord || word);
+    const key = this.sourceEntryKey(source, word);
+    const bucket = this.wordBuckets.get(bKey) || await this.loadWordBucket(bKey);
     const now = Date.now();
-    const hit = this.sourceLayer.get(key);
+    const hit = bucket.sources[key];
     if (hit) {
-      if (hit.status === 'ok' && now - hit.ts < this.cacheTimeout) {
-        return { type: source, data: hit.data as T, status: 'ok' };
+      if (hit.status === 'ok' && now - hit.ts < PERSISTED_CACHE_TTL_MS) {
+        return { type: source, data: hit.data as T, status: 'ok', fromCache: true };
       }
       if (hit.status === 'empty' && now - hit.ts < this.sourceEmptyTtlMs) {
-        return { type: source, data: hit.data as T, status: 'empty' };
-      }
-      if (hit.status === 'fail' && now - hit.ts < this.sourceFailBackoffMs) {
-        return { type: source, error: 'cached-fail', status: 'fail' };
+        return { type: source, data: hit.data as T, status: 'empty', fromCache: true };
       }
     }
-    if (this.isSourceDown(source)) {
-      return { type: source, error: 'source-down', status: 'skip' };
-    }
+    onMiss?.();
     try {
       const data = await fn();
-      this.noteSourceResult(source);
       const status: 'ok' | 'empty' = useful(data) ? 'ok' : 'empty';
-      this.sourceLayer.set(key, { status, data, ts: now });
+      bucket.sources[key] = { status, data, ts: Date.now() };
+      this.persistWordBucket(bKey);
       return { type: source, data, status };
     } catch (error) {
-      this.noteSourceResult(source, error);
-      this.sourceLayer.set(key, { status: 'fail', ts: now });
+      // Never store failures in the cache so the next lookup retries immediately.
       return { type: source, error, status: 'fail' };
     }
   }
@@ -1851,6 +1784,8 @@ export class DictionaryService extends BaseService {
       pushCore: (p: Promise<any>) => Promise<any>;
       offlineReady: Promise<void>;
       hasLocalHits: () => boolean;
+      bucketWord?: string;
+      onMiss?: () => void;
     },
   ): void {
     const word = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
@@ -1860,8 +1795,10 @@ export class DictionaryService extends BaseService {
     // The source cache folds case; kaikki pages do not (Haus and haus differ).
     const caseKey = word.replace(/\p{Lu}/gu, (c) => `^${c}`);
     const queue = (type: string, key: string, fn: () => Promise<SourceSenses>, primary: boolean) => {
-      if (!this.isSourceDown(type)) ctx.expectedSources.push(type);
-      const p = ctx.pushCore(this.cachedSource(type, key, fn, hasSenses).then((r) => ({ ...r, type })));
+      ctx.expectedSources.push(type);
+      const p = ctx.pushCore(
+        this.cachedSource(type, key, fn, hasSenses, ctx.bucketWord, ctx.onMiss).then((r) => ({ ...r, type })),
+      );
       if (primary) ctx.primaryPromises.push(p);
     };
 
@@ -1918,6 +1855,8 @@ export class DictionaryService extends BaseService {
                   `${caseKey}@*`,
                   () => fetchKaikki(http, word, KAIKKI_ALL_LANGUAGES, { languages: KAIKKI_FALLBACK_LANGUAGES }),
                   hasSenses,
+                  ctx.bucketWord,
+                  ctx.onMiss,
                 ).then((r) => ({ ...r, type: 'kaikki' }))
               : { type: 'kaikki', status: 'skip' as const },
           ),
@@ -2114,12 +2053,32 @@ export class DictionaryService extends BaseService {
     };
     /** Free Dictionary and Wiktionary carry senses and IPA; the first paint waits for one of them. */
     const primaryPromises: Promise<any>[] = [];
+    const bucketWord = text;
+    await this.loadWordBucket(this.sourceBucketKey(bucketWord));
+    let missCount = 0;
+    const markMiss = () => {
+      missCount += 1;
+    };
 
     // Translation / Tatoeba must not hold the first paint (Google gtx often sits until timeout).
+    const txProvider = opts?.translationProvider || 'auto';
+    const txCaseKey = text.replace(/\p{Lu}/gu, (c) => `^${c}`);
     const translationPromise = pushAux(
-      this.getBestTranslation(text, targetLanguage, sourceLanguage, opts?.translationProvider || 'auto')
-        .then(translation => ({ type: 'translation', data: translation }))
-        .catch(error => ({ type: 'translation', error }))
+      this.cachedSource(
+        'translation',
+        `${txProvider}:${sourceLanguage}->${targetLanguage}:${txCaseKey}`,
+        async () => {
+          const hit = await this.getBestTranslation(text, targetLanguage, sourceLanguage, txProvider);
+          if (!hit) throw new DictionaryError('Translation failed', 'TRANSLATION_FAILED', true);
+          return hit;
+        },
+        (d) => !!(d && d.text && d.text.trim()),
+        bucketWord,
+        markMiss,
+      ).then((r) => {
+        pendingTranslation = false;
+        return { type: 'translation', data: r.data || null, error: r.error, status: r.status };
+      }),
     );
     
     // Smart routing by script / language (minimize user config thrash):
@@ -2162,9 +2121,14 @@ export class DictionaryService extends BaseService {
       const youdaoAuto = !!(this.youdaoAppKey && this.youdaoAppSecret);
       if (youdaoToggleOk && youdaoAuto && (youdaoSource?.enabled !== false || !enabledSources)) {
         pushCore(
-          this.getYoudaoData(text, 'zh-CHS', 'en')
-            .then(data => ({ type: 'youdao', data }))
-            .catch(error => ({ type: 'youdao', error }))
+          this.cachedSource(
+            'youdao',
+            text,
+            () => this.getYoudaoData(text, 'zh-CHS', 'en'),
+            (d) => !!(d && (d.definitions?.length || d.translations?.length)),
+            bucketWord,
+            markMiss,
+          ).then((r) => ({ ...r, type: 'youdao' })),
         );
       }
 
@@ -2202,20 +2166,22 @@ export class DictionaryService extends BaseService {
 
     // Free Dictionary + Datamuse: Latin/English path (CJK lemmas rarely have useful entries)
     if (preferLatinSources && !chosenOther && isSourceEnabled('Free Dictionary API')) {
-      if (!this.isSourceDown('freeDictionary')) expectedSources.push('freeDictionary');
+      expectedSources.push('freeDictionary');
       primaryPromises.push(this.onHost(pushCore(
         this.cachedSource(
           'freeDictionary',
           lookupWord,
           () => this.getFreeDictionaryData(lookupWord, langForDict),
           (data) => (data.definitions?.length || 0) > 0 || !!(data.pronunciations && data.pronunciations.length) || !!data.pronunciation,
+          bucketWord,
+          markMiss,
         ).then((r) => ({ ...r, type: 'freeDictionary' })),
       ), FREE_DICTIONARY));
     }
 
     // Wiktionary: always useful (defs + etymology). For CJK, still query when enabled.
     if (isSourceEnabled('Wiktionary')) {
-      if (!this.isSourceDown('wiktionary')) expectedSources.push('wiktionary');
+      expectedSources.push('wiktionary');
       // en.wiktionary keys its answer by language: собака lives under `ru`, not `en`.
       const wikiLang = langForDict === 'auto' ? 'en' : langForDict;
       // A capitalised word goes as typed, so Wiktionary can put "May" the month before "may".
@@ -2235,6 +2201,8 @@ export class DictionaryService extends BaseService {
             || !!data.pronunciation
             || !!(data.pronunciations && data.pronunciations.length)
             || !!(data.wordFamily && data.wordFamily.length),
+          bucketWord,
+          markMiss,
         ).then((r) => ({ ...r, type: 'wiktionary' })),
       ), WIKTIONARY));
     }
@@ -2250,6 +2218,8 @@ export class DictionaryService extends BaseService {
       pushCore,
       offlineReady: offlinePromise,
       hasLocalHits: () => definitions.some((d) => isLocalPackSource(d.source)),
+      bucketWord,
+      onMiss: markMiss,
     });
 
     // Grammatical forms arrive after the first paint; the page is shared with kaikki senses.
@@ -2257,7 +2227,7 @@ export class DictionaryService extends BaseService {
     if (isSourceEnabled('Kaikki') && !/\s/.test(languageWord.trim())) {
       const formsKey = `${languageWord.replace(/\p{Lu}/gu, (c) => `^${c}`)}@${langForDict}`;
       auxPromises.push(
-        this.cachedSource('inflections', formsKey, () => fetchInflections(getHttp(), languageWord, langForDict), (d) => !!d)
+        this.cachedSource('inflections', formsKey, () => fetchInflections(getHttp(), languageWord, langForDict), (d) => !!d, bucketWord, markMiss)
           .then((r) => {
             if (r.data) rawInflections = r.data as WordInflections;
           })
@@ -2276,6 +2246,8 @@ export class DictionaryService extends BaseService {
           familyKey,
           async () => familyFromKaikki(await fetchKaikkiPage(getHttp(), languageWord, kaikkiDir), languageWord, langForDict),
           (d) => Array.isArray(d) && d.length > 0,
+          bucketWord,
+          markMiss,
         )
           .then((r) => {
             if (Array.isArray(r.data) && r.data.length) kaikkiFamily = r.data as WordFamilyGroup[];
@@ -2289,7 +2261,21 @@ export class DictionaryService extends BaseService {
     const stem = langForDict === 'en' && isSourceEnabled('Datamuse') ? familyStem(languageWord) : '';
     if (stem) {
       auxPromises.push(
-        this.cachedSource('familyFrequency', stem, () => fetchFamilyFrequencies(getHttp(), languageWord), (d) => !!d)
+        this.cachedSource(
+          'familyFrequency',
+          stem,
+          async () => {
+            try {
+              return await fetchFamilyFrequencies(getHttp(), languageWord);
+            } catch (err) {
+              if (err instanceof DictionaryError && err.code === 'HTTP_404') return null;
+              throw err;
+            }
+          },
+          (d) => !!d,
+          undefined,
+          markMiss,
+        )
           .then((r) => {
             if (r.data) familyFrequencies = r.data as FamilyFrequencies;
           })
@@ -2300,7 +2286,7 @@ export class DictionaryService extends BaseService {
     let phraseFrequencies: PhraseFrequencies | null = null;
     if (stem && !/\s/.test(languageWord.trim())) {
       auxPromises.push(
-        this.cachedSource('phraseFrequency', languageWord, () => fetchPhraseFrequencies(getHttp(), languageWord), (d) => !!d)
+        this.cachedSource('phraseFrequency', languageWord, () => fetchPhraseFrequencies(getHttp(), languageWord), (d) => !!d, bucketWord, markMiss)
           .then((r) => {
             if (r.data) phraseFrequencies = r.data as PhraseFrequencies;
           })
@@ -2309,13 +2295,15 @@ export class DictionaryService extends BaseService {
     }
 
     if (preferLatinSources && !hasCJK && !chosenOther && isSourceEnabled('Datamuse')) {
-      if (!this.isSourceDown('datamuse')) expectedSources.push('datamuse');
+      expectedSources.push('datamuse');
       pushCore(
         this.cachedSource(
           'datamuse',
           lookupWord,
           () => this.getDatamuseData(lookupWord),
           (data) => (data.definitions?.length || 0) > 0 || (data.synonyms?.length || 0) > 0 || !!data.ipa,
+          bucketWord,
+          markMiss,
         ).then((r) => ({ ...r, type: 'datamuse' })),
       );
     }
@@ -2323,10 +2311,16 @@ export class DictionaryService extends BaseService {
     if (isSourceEnabled('Tatoeba')) {
       // Examples pair with the reader's native side (en→zh), not the Translation tab's
       // "To" pick — otherwise a one-off Japanese translation leaks into every lexicon.
+      const tatoebaTarget = this.defaultTargetForSource(sourceLanguage);
       pushAux(
-        this.getTatoebaExamples(text, sourceLanguage, this.defaultTargetForSource(sourceLanguage))
-          .then(data => ({ type: 'tatoeba', data }))
-          .catch(error => ({ type: 'tatoeba', error }))
+        this.cachedSource(
+          'tatoeba',
+          `${text}@${sourceLanguage}->${tatoebaTarget}`,
+          () => this.getTatoebaExamples(text, sourceLanguage, tatoebaTarget),
+          (d) => Array.isArray(d) && d.length > 0,
+          bucketWord,
+          markMiss,
+        ).then((r) => ({ ...r, type: 'tatoeba' })),
       );
     }
 
@@ -2335,25 +2329,40 @@ export class DictionaryService extends BaseService {
     if (allowEnglishPremium) {
       if (isSourceEnabled('Oxford Dictionary API') && this.oxfordAppId && this.oxfordAppKey) {
         pushCore(
-          this.getOxfordData(text)
-            .then(data => ({ type: 'oxford', data }))
-            .catch(error => ({ type: 'oxford', error }))
+          this.cachedSource(
+            'oxford',
+            text,
+            () => this.getOxfordData(text),
+            (d) => !!(d && d.definitions?.length),
+            bucketWord,
+            markMiss,
+          ).then((r) => ({ ...r, type: 'oxford' })),
         );
       }
 
       if (isSourceEnabled('WordsAPI') && this.wordsApiKey) {
         pushCore(
-          this.getWordsApiData(text)
-            .then(data => ({ type: 'wordsApi', data }))
-            .catch(error => ({ type: 'wordsApi', error }))
+          this.cachedSource(
+            'wordsApi',
+            text,
+            () => this.getWordsApiData(text),
+            (d) => !!(d && d.definitions?.length),
+            bucketWord,
+            markMiss,
+          ).then((r) => ({ ...r, type: 'wordsApi' })),
         );
       }
 
       if (isSourceEnabled('Collins Dictionary API') && this.collinsApiKey && this.collinsApiHost) {
         pushCore(
-          this.getCollinsData(text)
-            .then(data => ({ type: 'collins', data }))
-            .catch(error => ({ type: 'collins', error }))
+          this.cachedSource(
+            'collins',
+            text,
+            () => this.getCollinsData(text),
+            (d) => !!(d && d.definitions?.length),
+            bucketWord,
+            markMiss,
+          ).then((r) => ({ ...r, type: 'collins' })),
         );
       }
     }
@@ -2739,7 +2748,7 @@ export class DictionaryService extends BaseService {
       // US/UK top-up for forms whose entry has no accent labels. It runs as soon as the
       // dictionaries are in, not after translation and etymology.
       const [lemmaPhon, wikiIpa] = await Promise.all([
-        this.cachedSource('freeDictionary', ipaWord, () => this.getFreeDictionaryData(ipaWord, 'en'), () => true)
+        this.cachedSource('freeDictionary', ipaWord, () => this.getFreeDictionaryData(ipaWord, 'en'), () => true, bucketWord, markMiss)
           .then((r) => (r.data || {}) as { pronunciations?: Pronunciation[]; pronunciation?: string }),
         withBudget(this.getWiktionaryIpa(ipaWord), IPA_BUDGET_MS * 2, WIKTIONARY, 1, 'wiki.ipa').catch((): Pronunciation[] => []),
       ]);
@@ -2765,7 +2774,7 @@ export class DictionaryService extends BaseService {
     for (const p of auxPromises) void p.then(schedule);
     const etymologyDone = (skipEtymology
       ? Promise.resolve(undefined)
-      : this.fetchEtymologyFromMultipleSources(text).catch((error: unknown): undefined => {
+      : this.fetchEtymologyFromMultipleSources(text, bucketWord, markMiss).catch((error: unknown): undefined => {
           console.warn('[ETY] multi-source etymology skipped', error);
           return undefined;
         })
@@ -2778,6 +2787,40 @@ export class DictionaryService extends BaseService {
       }
       schedule();
     });
+
+    const cleanEty = this.cleanWordForEtymology(text);
+    const oxfordEtyOn = !!(this.oxfordAppId && this.oxfordAppKey);
+    const allEtyCached =
+      skipEtymology ||
+      !cleanEty ||
+      (this.hasFreshSource('ety-wiktionary', cleanEty, bucketWord) &&
+        this.hasFreshSource('ety-etymonline', cleanEty, bucketWord) &&
+        this.hasFreshSource('ety-youdao', cleanEty, bucketWord) &&
+        (!oxfordEtyOn || this.hasFreshSource('ety-oxford', cleanEty, bucketWord)));
+    const ipaWordCheck = foldLatinHeadword(text);
+    const haveUsUkNow =
+      pronunciations.some((p) => p.accent === 'us' && p.ipa) && pronunciations.some((p) => p.accent === 'uk' && p.ipa);
+    const ipaTopUpCached =
+      !preferLatinSources ||
+      chosenOther ||
+      !ipaWordCheck ||
+      haveUsUkNow ||
+      (this.hasFreshSource('freeDictionary', ipaWordCheck, bucketWord) &&
+        this.hasFreshSource('wiktionaryWikitext', ipaWordCheck));
+
+    if (!missCount && allEtyCached && ipaTopUpCached) {
+      await Promise.allSettled([coreDone, translationDone, etymologyDone, ...auxPromises]);
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      drain();
+      const settled = buildResult();
+      lastSent = this.updateSignature(settled);
+      if (holder) holder.current = settled;
+      return settled;
+    }
+
     void Promise.allSettled([coreDone, translationDone, etymologyDone, ...auxPromises])
       .then(() => flush())
       .catch((err) => console.warn('Background lookup enrich failed', err));
@@ -3027,7 +3070,6 @@ export class DictionaryService extends BaseService {
     } catch {
       /* asked below */
     }
-    if (this.isSourceDown('wiktionary')) return query;
     return null;
   }
 
@@ -3352,19 +3394,23 @@ export class DictionaryService extends BaseService {
   }
 
   /** Wiktionary pages being fetched, so the lookup, its IPA and its pictures share one request. */
-  private wikitextInFlight = new Map<string, Promise<string>>();
+  private wikitextInFlight = new Map<string, Promise<{ text: string; failed: boolean }>>();
 
-  private getWiktionaryWikitext(word: string): Promise<string> {
+  private getWiktionaryWikitextWithStatus(word: string): Promise<{ text: string; failed: boolean }> {
     const head = foldLatinHeadword(word) || word.trim();
-    if (!head) return Promise.resolve('');
+    if (!head) return Promise.resolve({ text: '', failed: false });
     const pending = this.wikitextInFlight.get(head);
     if (pending) return pending;
-    const p = this.fetchWiktionaryWikitext(head).finally(() => this.wikitextInFlight.delete(head));
+    const p = this.fetchWiktionaryWikitextWithStatus(head).finally(() => this.wikitextInFlight.delete(head));
     this.wikitextInFlight.set(head, p);
     return p;
   }
 
-  private async fetchWiktionaryWikitext(head: string): Promise<string> {
+  private getWiktionaryWikitext(word: string): Promise<string> {
+    return this.getWiktionaryWikitextWithStatus(word).then((r) => r.text);
+  }
+
+  private async fetchWiktionaryWikitextWithStatus(head: string): Promise<{ text: string; failed: boolean }> {
     const wrapped = await this.cachedSource(
       'wiktionaryWikitext',
       head,
@@ -3388,7 +3434,7 @@ export class DictionaryService extends BaseService {
       },
       (data) => data.length > 0,
     );
-    return wrapped.data || '';
+    return { text: wrapped.data || '', failed: wrapped.status === 'fail' };
   }
 
   private async fetchWiktionaryIpaPage(word: string): Promise<Pronunciation[]> {
@@ -3456,8 +3502,9 @@ export class DictionaryService extends BaseService {
         etymology
       };
     } catch (error) {
+      if (error instanceof DictionaryError && error.code === 'HTTP_404') return null;
       console.warn(`Oxford Dictionary API failed for "${text}":`, error);
-      return null;
+      throw error;
     }
   }
 
@@ -3510,8 +3557,9 @@ export class DictionaryService extends BaseService {
         antonyms: [...new Set(antonyms)]
       };
     } catch (error) {
+      if (error instanceof DictionaryError && error.code === 'HTTP_404') return null;
       console.warn(`WordsAPI failed for "${text}":`, error);
-      return null;
+      throw error;
     }
   }
 
@@ -3558,8 +3606,9 @@ export class DictionaryService extends BaseService {
 
       return { word: text, definitions, examples };
     } catch (error) {
+      if (error instanceof DictionaryError && error.code === 'HTTP_404') return null;
       console.warn(`Collins API failed for "${text}":`, error);
-      return null;
+      throw error;
     }
   }
 
@@ -3598,7 +3647,10 @@ export class DictionaryService extends BaseService {
         body: params.toString()
       });
 
-      if (!response || response.errorCode !== '0') return null;
+      if (!response) throw new DictionaryError('Empty Youdao response', 'NETWORK', true);
+      if (response.errorCode !== '0') {
+        throw new DictionaryError(`Youdao API error ${response.errorCode}`, `YOUDAO_${response.errorCode}`, true);
+      }
 
       const defs: Definition[] = [];
       if (response.basic && response.basic.explains) {
@@ -3627,7 +3679,7 @@ export class DictionaryService extends BaseService {
       };
     } catch (error) {
       console.warn(`Youdao API failed for "${text}":`, error);
-      return null;
+      throw error;
     }
   }
 
@@ -3733,18 +3785,28 @@ export class DictionaryService extends BaseService {
     const to = iso3[targetLanguage] || 'cmn';
     if (from === to) return [];
 
-    const search = (pair: string) => this.withTimeout<any>(
-      this.request<any>(
-        `https://tatoeba.org/en/api_v0/search?from=${from}${pair}&query=${encodeURIComponent(term)}&sort=relevance`
-      ).catch((): any => null),
-      2500,
-      null
-    );
+    let failed = false;
+    const search = (pair: string) =>
+      withBudget(
+        this.request<any>(
+          `https://tatoeba.org/en/api_v0/search?from=${from}${pair}&query=${encodeURIComponent(term)}&sort=relevance`,
+        ),
+        2500,
+        [],
+        1,
+        'tatoeba',
+      ).catch((): null => {
+        failed = true;
+        return null;
+      });
     // `to=` keeps only sentences translated into that language; many words have none,
     // so fall back to untranslated source sentences rather than showing nothing.
     let results = (await search(`&to=${to}`))?.results;
     if (!Array.isArray(results) || results.length === 0) results = (await search(''))?.results;
-    if (!Array.isArray(results)) return [];
+    if (!Array.isArray(results)) {
+      if (failed) throw new DictionaryError('Tatoeba request failed', 'NETWORK', true);
+      return [];
+    }
 
     const examples: string[] = [];
     for (const item of results.slice(0, 4)) {
@@ -3809,27 +3871,68 @@ export class DictionaryService extends BaseService {
    * Fetches etymology from multiple sources for comprehensive coverage
    */
   private async fetchEtymologyFromMultipleSources(
-    text: string
+    text: string,
+    bucketWord?: string,
+    onMiss?: () => void,
   ): Promise<EtymologyResult | undefined> {
     const labeled: string[] = [];
     let chain: EtymologyLink[] | undefined;
-
-    const one = <T,>(p: Promise<T | undefined>, ms: number, label: string): Promise<T | undefined> =>
-      withBudget(p, ms, [], 1, label).catch((error: unknown): undefined => {
-        console.warn(`${label} failed`, error);
-        return undefined;
-      });
+    const cleanWord = this.cleanWordForEtymology(text);
+    const cacheKey = cleanWord || text;
+    const bucket = bucketWord || cacheKey;
 
     // Per-source budgets: a 502 on Etymonline must not discard Wiktionary/Youdao.
-    const [wiktionaryEtymology, etymonlineEtymology, youdaoEtymology, oxfordEtymology] = await Promise.all([
-      one(this.fetchEtymologyFromWikitext(text), 4500, 'ety.wiktionary'),
-      withBudget(this.fetchEtymologyFromEtymonline(text), 10000, 'www.etymonline.com', 1, 'ety.etymonline')
-        .catch((error: unknown) => etymonlineUnavailable(this.cleanWordForEtymology(text), etymologyErrorCode(error))),
-      one(this.fetchEtymologyFromYoudao(text), 12000, 'ety.youdao'),
+    // Never store failures in the cache so failed etymology sources retry immediately.
+    const [wiktWrapped, etymonlineWrapped, youdaoWrapped, oxfordWrapped] = await Promise.all([
+      this.cachedSource(
+        'ety-wiktionary',
+        cacheKey,
+        () => withBudget(this.fetchEtymologyFromWikitext(text), 4500, [], 1, 'ety.wiktionary'),
+        (d) => !!(d && d.text),
+        bucket,
+        onMiss,
+      ),
+      this.cachedSource(
+        'ety-etymonline',
+        cacheKey,
+        async () => {
+          const res = await withBudget(this.fetchEtymologyFromEtymonline(text), 10000, 'www.etymonline.com', 1, 'ety.etymonline');
+          if (res?.unavailable) throw new EtymologyUnavailableError(res.unavailable);
+          return res;
+        },
+        (d) => !!(d && d.text),
+        bucket,
+        onMiss,
+      ),
+      this.cachedSource(
+        'ety-youdao',
+        cacheKey,
+        () => withBudget(this.fetchEtymologyFromYoudao(text), 12000, [], 1, 'ety.youdao'),
+        (d) => typeof d === 'string' && d.length > 0,
+        bucket,
+        onMiss,
+      ),
       this.oxfordAppId && this.oxfordAppKey
-        ? one(this.fetchEtymologyFromOxford(text), 3500, 'ety.oxford')
-        : Promise.resolve(undefined),
+        ? this.cachedSource(
+            'ety-oxford',
+            cacheKey,
+            () => withBudget(this.fetchEtymologyFromOxford(text), 3500, [], 1, 'ety.oxford'),
+            (d) => typeof d === 'string' && d.length > 0,
+            bucket,
+            onMiss,
+          )
+        : Promise.resolve({ type: 'ety-oxford', status: 'skip' as const, data: undefined }),
     ]);
+
+    const wiktionaryEtymology = wiktWrapped.data;
+    const etymonlineEtymology: EtymonlineResult | undefined =
+      etymonlineWrapped.status === 'fail'
+        ? etymonlineWrapped.error instanceof EtymologyUnavailableError
+          ? { unavailable: etymonlineWrapped.error.info }
+          : etymonlineUnavailable(cleanWord, etymologyErrorCode(etymonlineWrapped.error))
+        : etymonlineWrapped.data;
+    const youdaoEtymology = youdaoWrapped.data;
+    const oxfordEtymology = oxfordWrapped.data;
 
     if (wiktionaryEtymology?.text) {
       labeled.push(`[Wiktionary]\n${wiktionaryEtymology.text}`);
@@ -4031,25 +4134,33 @@ export class DictionaryService extends BaseService {
     const cleanWord = this.cleanWordForEtymology(text);
     if (!cleanWord || cleanWord.length > 48) return undefined;
 
-    try {
-      const q = encodeURIComponent(cleanWord);
-      const dicts = encodeURIComponent('{"count":1,"dicts":[["etym"]]}');
-      const urls = [
-        `https://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}&dicts=${dicts}`,
-        `https://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}`,
-        `http://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}&dicts=${dicts}`,
-      ];
-      const headers = {
-        'User-Agent':
-          'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        Accept: 'application/json,text/plain,*/*',
-      };
-      let etyms: any;
-      for (const url of urls) {
-        const response = await getHttp()
-          .requestText(url, { headers, timeoutMs: 5000 })
-          .catch(() => ({ ok: false, status: 0, text: '' }));
-        if (!response.ok || !response.text) continue;
+    const q = encodeURIComponent(cleanWord);
+    const dicts = encodeURIComponent('{"count":1,"dicts":[["etym"]]}');
+    const urls = [
+      `https://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}&dicts=${dicts}`,
+      `https://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}`,
+      `http://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}&dicts=${dicts}`,
+    ];
+    const headers = {
+      'User-Agent':
+        'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      Accept: 'application/json,text/plain,*/*',
+    };
+    let etyms: any;
+    let anyOkOr404 = false;
+    let lastError: unknown;
+    for (const url of urls) {
+      try {
+        const response = await getHttp().requestText(url, { headers, timeoutMs: 5000 });
+        if (response.status === 404) {
+          anyOkOr404 = true;
+          continue;
+        }
+        if (!response.ok || !response.text) {
+          lastError = new DictionaryError(`Youdao etymology HTTP ${response.status}`, `HTTP_${response.status}`, true);
+          continue;
+        }
+        anyOkOr404 = true;
         try {
           const data = JSON.parse(response.text) as { etym?: { etyms?: any; word?: string } };
           if (data?.etym?.etyms && typeof data.etym.etyms === 'object') {
@@ -4062,15 +4173,19 @@ export class DictionaryService extends BaseService {
         } catch {
           /* next url */
         }
+      } catch (err) {
+        lastError = err;
       }
+    }
 
-      if (!etyms) return undefined;
-
-      return serializeEtymologySources(groupYoudaoEtymologies(etyms, cleanWord));
-    } catch (error) {
-      console.warn(`Youdao etymology failed for "${cleanWord}":`, error);
+    if (!etyms) {
+      if (!anyOkOr404) {
+        throw lastError || new DictionaryError(`Youdao etymology failed for "${cleanWord}"`, 'NETWORK', true);
+      }
       return undefined;
     }
+
+    return serializeEtymologySources(groupYoudaoEtymologies(etyms, cleanWord));
   }
 
   /**
@@ -4102,7 +4217,9 @@ export class DictionaryService extends BaseService {
         }
       }
     } catch (error) {
+      if (error instanceof DictionaryError && error.code === 'HTTP_404') return undefined;
       console.warn(`Oxford etymology fetch failed:`, error);
+      throw error;
     }
 
     return undefined;
@@ -4114,21 +4231,18 @@ export class DictionaryService extends BaseService {
   private async fetchEtymologyFromWikitext(
     text: string
   ): Promise<{ text: string; chain?: EtymologyLink[] } | undefined> {
-    try {
-      const cleanWord = this.cleanWordForEtymology(text);
-      if (!cleanWord) return undefined;
+    const cleanWord = this.cleanWordForEtymology(text);
+    if (!cleanWord) return undefined;
 
-      const wikitext = await this.getWiktionaryWikitext(cleanWord);
-      if (!wikitext) {
-        return undefined;
-      }
-
-      return this.parseEtymology(wikitext);
-
-    } catch (error) {
-      console.warn(`Wiktionary etymology fetch failed for "${text}":`, error);
+    const { text: wikitext, failed } = await this.getWiktionaryWikitextWithStatus(cleanWord);
+    if (failed) {
+      throw new DictionaryError(`Wiktionary wikitext failed for "${cleanWord}"`, 'NETWORK', true);
     }
-    return undefined;
+    if (!wikitext) {
+      return undefined;
+    }
+
+    return this.parseEtymology(wikitext);
   }
 
   private extractEtymologyFromWikitext(wikitext: string): string | undefined {
@@ -4641,7 +4755,6 @@ export class DictionaryService extends BaseService {
       if (out) return cased(out);
     } catch (error) {
       if (isCancelled(error)) throw error;
-      if (error instanceof DictionaryError && error.code === 'HTTP_429') this.googleGtxCoolUntil = Date.now() + 90_000;
     }
     if (this.apiKey) {
       try {
@@ -4665,20 +4778,12 @@ export class DictionaryService extends BaseService {
     deepl: 'api-free.deepl.com',
   };
 
-  /** An engine that gave no answer at all goes last for a while (cleared when the network changes). */
-  private noteTranslationDown(provider: Exclude<TranslationProvider, 'auto'>): void {
-    this.translationDownUntil.set(provider, Date.now() + TRANSLATION_DOWN_MS);
-  }
-
   /**
    * The first translation any engine gives, the preferred engine first, in the source's case
    * (withSourceCase). The engines are started one after another the way Happy Eyeballs (RFC 8305) starts connection attempts: the next
    * engine starts as soon as the one before it fails, or when it has not answered within its
    * host's round trip (at least TRANSLATION_STAGGER_MS), or when its host stops answering while
-   * others answer. The first answer wins. Before, each engine was waited out in turn: with Google
-   * blocked, every translation waited out both of Google's requests (ten seconds or more) before
-   * MyMemory was asked. An engine that gave no answer at all also goes last for a while, so the
-   * next translation starts with one that works.
+   * others answer. The first answer wins.
    */
   private async getBestTranslation(
     text: string,
@@ -4726,7 +4831,7 @@ export class DictionaryService extends BaseService {
     } catch {
       /* asked below */
     }
-    if (!isCoreConfigured() || this.isSourceDown('wiktionary')) return false;
+    if (!isCoreConfigured()) return false;
     const lowerWord = word.charAt(0).toLocaleLowerCase(lang(targetLanguage) || undefined) + word.slice(1);
     // Glosses of the source are asked for only when they are in the target language (English).
     const titles = [lang(targetLanguage) === 'en' ? typed : '', word, lowerWord];
@@ -4762,9 +4867,7 @@ export class DictionaryService extends BaseService {
     const freeFirst: Array<Exclude<TranslationProvider, 'auto'>> = ['google', 'mymemory', 'youdao', 'deepl'];
     const preferredOrder = preferred === 'auto' ? freeFirst : [preferred, ...freeFirst.filter((p) => p !== preferred)];
     const usable = preferredOrder.filter((p) => this.canTranslateWith(p));
-    const now = Date.now();
-    const down = (p: Exclude<TranslationProvider, 'auto'>) => (this.translationDownUntil.get(p) || 0) > now;
-    const order = [...usable.filter((p) => !down(p)), ...usable.filter(down)];
+    const order = usable;
     if (!order.length) return null;
 
     return new Promise<Translation | null>((resolve) => {
@@ -4773,14 +4876,11 @@ export class DictionaryService extends BaseService {
       let done = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       let waitingOn = '';
-      const pending = new Set<Exclude<TranslationProvider, 'auto'>>();
       const finish = (hit: Translation | null) => {
         if (done) return;
         done = true;
         clearTimeout(timer);
         off();
-        // An engine still silent when another one answered goes last next time, until it answers.
-        for (const slow of pending) this.noteTranslationDown(slow);
         resolve(hit);
       };
       const startNext = () => {
@@ -4792,14 +4892,11 @@ export class DictionaryService extends BaseService {
         }
         const p = order[next++];
         running += 1;
-        pending.add(p);
         waitingOn = DictionaryService.TRANSLATION_HOSTS[p];
         void this.translateWithProvider(p, text, targetLanguage, sourceLanguage)
           .catch((): null => null)
           .then((hit) => {
             running -= 1;
-            pending.delete(p);
-            if (hit) this.translationDownUntil.delete(p);
             if (hit) finish(hit);
             else startNext();
           });
@@ -5092,7 +5189,6 @@ export class DictionaryService extends BaseService {
     const key = text.slice(0, 200);
     const memo = this.remoteDetectMemo.get(key);
     if (memo !== undefined) return memo;
-    if (Date.now() < this.remoteDetectCoolUntil) return '';
     let lang = '';
     try {
       if (this.apiKey) {
@@ -5109,7 +5205,6 @@ export class DictionaryService extends BaseService {
         lang = Array.isArray(response) && typeof response[2] === 'string' ? response[2] : '';
       }
     } catch {
-      this.remoteDetectCoolUntil = Date.now() + 10 * 60_000;
       return '';
     }
     const norm = ({ iw: 'he', jw: 'jv', 'zh-cn': 'zh', 'zh-tw': 'zh' } as Record<string, string>)[lang.toLowerCase()] || lang.toLowerCase().split('-')[0];
@@ -5143,8 +5238,14 @@ export class DictionaryService extends BaseService {
    * Clear the cache
    */
   clearCache(): void {
-    this.cache.clear();
-    this.sourceLayer.clear();
+    this.wordBuckets.clear();
+    this.bucketLoads.clear();
+    this.remoteDetectMemo.clear();
+    this.translationCapitals.clear();
+    this.typedTitles.clear();
+    this.properNouns.clear();
+    this.wiktionaryPages.clear();
+    this.formDecisions.clear();
   }
 
   /**
@@ -5152,8 +5253,8 @@ export class DictionaryService extends BaseService {
    */
   getCacheStats(): { size: number; entries: string[] } {
     return {
-      size: this.cache.size,
-      entries: Array.from(this.cache.keys())
+      size: this.wordBuckets.size,
+      entries: Array.from(this.wordBuckets.keys())
     };
   }
 

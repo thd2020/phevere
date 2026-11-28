@@ -35,7 +35,12 @@ export function installDesktopDiagnostics(): void {
     record('renderer-exit', { webContentsId: contents.id, reason: details.reason, exitCode: details.exitCode });
   });
   app.on('child-process-gone', (_event, details) => {
-    record('child-exit', { type: details.type, reason: details.reason, exitCode: details.exitCode });
+    record('child-exit', {
+      type: details.type,
+      reason: details.reason,
+      exitCode: details.exitCode,
+      ...(details.serviceName ? { serviceName: details.serviceName } : {}),
+    });
   });
   app.on('before-quit', () => record('before-quit'));
   app.on('will-quit', () => record('will-quit'));

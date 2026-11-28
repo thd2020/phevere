@@ -374,7 +374,7 @@ dead['quick translation with Google blocked'] = async () => {
     const hit = await service.translateText(text, 'zh', 'en', 'auto');
     const took = Date.now() - started;
     assert.equal(hit && hit.source, 'MyMemory', `MyMemory translates (${i + 1})`);
-    assert.ok(took < (i ? 3000 : 6000) * SLACK, `translation ${i + 1} in ${took} ms (4.2.0: 17 s each)`);
+    assert.ok(took < (i ? 4000 : 6000) * SLACK, `translation ${i + 1} in ${took} ms (4.2.0: 17 s each)`);
   }
 };
 dead['quick translation when the chosen engine is down'] = async () => {
@@ -408,25 +408,21 @@ last['three requests at most to Wiktionary on a slow cold start'] = async () => 
     for (const [host, n] of Object.entries(net.maxInFlight)) assert.ok(n <= 3 || !/wik/.test(host), `${word}: ${host} had ${n} open`);
   }
 };
-// A source skipped because it fails while others answer stays skipped when some other host falls
-// silent too (Google Translate blocked): only the whole connection answering again, or a network
-// change, ends the skip.
-last['a skip outlives another host falling silent'] = async () => {
-  const link = { state: (u) => (u.includes('wiktionary.org') ? 'refused' : 'up') };
-  const { core, service, net } = app({ delay: [100, 200], seed: 'skip' }, { link });
+// Failed sources are never cooled down across lookups: Wiktionary retries immediately on
+// every lookup and recovers as soon as the host comes back, without waiting for a network event.
+last['failed source retries immediately without host backoff'] = async () => {
+  let wiktUp = false;
+  const link = { state: (u) => (u.includes('wiktionary.org') && !wiktUp ? 'refused' : 'up') };
+  const { service, net } = app({ delay: [100, 200], seed: 'no-skip' }, { link });
   await service.lookup('fish', 'zh');
   await service.lookup('dog', 'zh');
-  const hung = core.trackHttp({ requestJson: () => new Promise(() => {}), requestText: async () => ({}), requestBytes: async () => ({}) });
-  for (const p of ['a', 'b']) hung.requestJson(`https://blocked.example.org/${p}`, { hedge: false, timeoutMs: 60000 }).catch(() => {});
-  for (let i = 0; i < 80 && !core.hostSilent('blocked.example.org'); i += 1) await new Promise((r) => setTimeout(r, 100));
-  assert.ok(core.hostSilent('blocked.example.org'), 'the other host counts as silent');
   const before = net.log.filter((r) => r.url.includes('wiktionary.org')).length;
-  await service.lookup('cat', 'zh');
+  await service.lookup('hello', 'zh');
   const after = net.log.filter((r) => r.url.includes('wiktionary.org')).length;
-  assert.equal(after - before, 0, `Wiktionary is still skipped (${after - before} requests)`);
-  core.noteNetworkChange();
-  await service.lookup('cow', 'zh');
-  assert.ok(net.log.filter((r) => r.url.includes('wiktionary.org')).length > after, 'and asked again after a network change');
+  assert.ok(after > before, `Wiktionary retried immediately (${after - before} requests)`);
+  wiktUp = true;
+  const cat = await service.lookup('cat', 'zh');
+  assert.ok(cat.sources.includes('Wiktionary'), 'and recovers immediately without needing noteNetworkChange');
 };
 
 // Alone, after everything else: a lookup whose page check fails at once (Wiktionary and Kaikki
@@ -515,7 +511,7 @@ fixes['Google HTTP 429 fails over immediately to MyMemory'] = async () => {
   assert.equal(googleHits, 1, 'stops on 429 instead of hitting the second Google URL');
   const second = await service.translateText('See you tomorrow', 'zh', 'en', 'auto');
   assert.equal(second && second.source, 'MyMemory');
-  assert.equal(googleHits, 1, 'subsequent call skips Google while cooled down');
+  assert.equal(googleHits, 2, 'subsequent call retries Google immediately without a host cooldown');
 };
 fixes['capitalBelongs caps wait on slow Wiktionary'] = async () => {
   const { core } = app({});

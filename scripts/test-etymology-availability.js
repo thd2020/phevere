@@ -68,25 +68,83 @@ const plain = JSON.parse(JSON.stringify({
   assert.ok(!combined.text.includes('[Etymonline]'), 'Blocked provider prose must not be invented.');
   response = { ok: true, status: 200, text: '<meta property="og:description" content="An early noun for establishing direction from the east."/>' };
   assert.equal((await service.fetchEtymologyFromMultipleSources('orientation')).unavailable, undefined, 'Success clears provider failure.');
+  service.clearCache();
+  persisted.clear();
   const originalFetch = service.fetchEtymologyFromEtymonline;
   service.fetchEtymologyFromEtymonline = () => new Promise(() => {});
   assert.equal((await service.fetchEtymologyFromMultipleSources('orientation')).unavailable[0].code, 'TIMEOUT');
   service.fetchEtymologyFromEtymonline = originalFetch;
 
-  const failed = { ...plain, metadata: { ...plain.metadata, etymologyUnavailable: combined.unavailable } };
-  assert.equal(service.isIncompleteSourceCache(failed), true);
-  assert.equal(service.isIncompleteSourceCache(plain), false);
-  assert.notEqual(service.updateSignature(failed), service.updateSignature(plain));
-  service.aggregateDictionaryDataParallel = async () => failed;
-  await service.lookup('orientation', 'zh', ['Free Dictionary API'], { sourceLanguage: 'en' });
-  const saved = [...persisted.values()][0];
-  assert.ok(saved, 'The result with real definitions remains cacheable.');
-  const remaining = 14 * 24 * 60 * 60 * 1000 - (Date.now() - saved.savedAt);
-  assert.ok(remaining > 590000 && remaining <= 600000, 'A failed provider persists for ten minutes, not fourteen days.');
-  const restored = new DictionaryService();
-  await restored.lookup('orientation', 'zh', ['Free Dictionary API'], { sourceLanguage: 'en' });
-  assert.ok([...restored.cache.values()][0].ttl <= 600000, 'Restoring a partial disk entry must not extend its memory lifetime to one day.');
+  persisted.clear();
+  let freeDictHits = 0;
+  let wiktEtyHits = 0;
+  let youdaoEtyHits = 0;
+  const attachMocks = (inst) => {
+    inst.getFreeDictionaryData = async () => {
+      freeDictHits++;
+      return {
+        definitions: plain.definitions,
+        pronunciations: [{ ipa: '/fə/', accent: 'us', source: 'Fixture' }, { ipa: '/fə/', accent: 'uk', source: 'Fixture' }],
+      };
+    };
+    inst.getBestTranslation = async () => ({ language: 'zh', text: '方向', source: 'Fixture' });
+    inst.fetchEtymologyFromWikitext = async () => {
+      wiktEtyHits++;
+      return { text: 'From orient and a noun-forming suffix.' };
+    };
+    inst.fetchEtymologyFromYoudao = async () => {
+      youdaoEtyHits++;
+      return '[童理民 · 中文]\n该词的词义从东向扩大为方向。';
+    };
+  };
 
+  response = { ok: false, status: 403, text: '' };
+  const firstSvc = new DictionaryService();
+  attachMocks(firstSvc);
+  const runUntilSettled = (inst) => new Promise((resolve, reject) => {
+    const deadline = setTimeout(() => reject(new Error('Streaming etymology did not settle.')), 2000);
+    let settled;
+    inst.lookup('orientation', 'zh', ['Free Dictionary API'], {
+      sourceLanguage: 'en',
+      onUpdate: (r) => {
+        if (!r.metadata.pendingEtymology) {
+          settled = r;
+          clearTimeout(deadline);
+          resolve(r);
+        }
+      },
+    }).then((initial) => {
+      if (!initial.metadata.pendingEtymology && !settled) {
+        clearTimeout(deadline);
+        resolve(initial);
+      }
+    }, (err) => { clearTimeout(deadline); reject(err); });
+  });
+
+  const firstRun = await runUntilSettled(firstSvc);
+  assert.equal(firstRun.metadata.etymologyUnavailable[0].code, 'HTTP_403');
+  assert.ok(!firstRun.etymology.includes('[Etymonline]'));
+  await new Promise((r) => setTimeout(r, 20));
+  const savedBucket = persisted.get('src-bucket:v2:orientation')?.value;
+  assert.ok(savedBucket && savedBucket.v === 2, 'Word bucket persisted.');
+  assert.ok(savedBucket.sources['freeDictionary:orientation'], 'Successful freeDictionary cached.');
+  assert.ok(savedBucket.sources['ety-wiktionary:orientation'], 'Successful Wiktionary etymology cached.');
+  assert.ok(!savedBucket.sources['ety-etymonline:orientation'], 'Failed Etymonline must NOT be stored in cache.');
+
+  // Next lookup retries failed Etymonline immediately while keeping healthy sources cached.
+  response = { ok: true, status: 200, text: '<section class="prose-lg"><p>From an earlier word for facing east, later extended to direction.</p></section>' };
+  const restored = new DictionaryService();
+  attachMocks(restored);
+  const retryRun = await runUntilSettled(restored);
+  assert.ok(retryRun.etymology.includes('[Etymonline]'), 'Failed Etymonline retries immediately on the next lookup.');
+  assert.equal(freeDictHits, 1, 'Cached Free Dictionary is not re-fetched.');
+  assert.equal(wiktEtyHits, 1, 'Cached Wiktionary etymology is not re-fetched.');
+  assert.equal(youdaoEtyHits, 1, 'Cached Youdao etymology is not re-fetched.');
+  const thirdRun = await restored.lookup('orientation', 'zh', ['Free Dictionary API'], { sourceLanguage: 'en' });
+  assert.equal(thirdRun.metadata.pendingEtymology, false, 'Fully cached bucket settles immediately.');
+  assert.ok(thirdRun.etymology.includes('[Etymonline]'));
+
+  persisted.clear();
   response = { ok: false, status: 403, text: '' };
   const streamed = new DictionaryService();
   streamed.fetchEtymologyFromWikitext = service.fetchEtymologyFromWikitext;

@@ -133,16 +133,18 @@ assert.strictEqual(arpabetToIpa('OW0 P EH1 R AH0 N '), 'oʊˈpɛɹən');
   assert.ok(operon.pronunciations.every((p) => p.source !== 'Datamuse'), `operon: ${JSON.stringify(operon.pronunciations)}`);
   assert.ok(operon.pronunciations.some((p) => p.ipa === 'ˈɒpəˌɹɒn'));
 
-  // A result saved before this fix, with senses but no IPA, is served from the disk cache for a
-  // day at most, so the word gets its IPA on a later lookup.
-  const [key, saved] = [...persisted.entries()].find(([, v]) => v.value.word === 'holon');
+  // A bucket saved without Datamuse (or whose Datamuse entry was removed/expired) only fetches
+  // the missing Datamuse IPA on the next lookup while keeping cached sources intact.
+  const bucketKey = 'src-bucket:v2:holon';
+  const saved = persisted.get(bucketKey);
+  assert.ok(saved && saved.value?.sources, 'holon bucket persisted');
   const stale = JSON.parse(JSON.stringify(saved.value));
-  delete stale.pronunciations;
-  delete stale.pronunciation;
-  persisted.set(key, { value: stale, savedAt: Date.now() - 2 * 24 * 60 * 60 * 1000 });
+  delete stale.sources['datamuse:holon'];
+  persisted.set(bucketKey, { value: stale, savedAt: Date.now() });
   seen.length = 0;
   const again = await settle('holon');
-  assert.ok(seen.length > 0, 'an old result without IPA is looked up again');
+  assert.ok(seen.some((u) => u.includes('datamuse.com')), 'missing Datamuse entry is fetched on the next lookup');
+  assert.ok(!seen.some((u) => u.includes('wiktionary')), 'cached Wiktionary source is not re-fetched');
   assert.strictEqual(formatPronunciationLine(again.pronunciations), 'US /ˈhɑlən/');
 
   Object.assign(console, quiet);

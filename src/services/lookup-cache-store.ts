@@ -17,6 +17,7 @@ const MAX_AGE_MS = 15 * 86_400_000;
 const MAX_FILES = 6000;
 
 let dir: string | null = null;
+let writeSeq = 0;
 
 function cacheDir(): string {
   if (dir) return dir;
@@ -81,7 +82,7 @@ export const fileLookupCache: LookupCacheStore = {
       return;
     }
     const file = fileFor(key);
-    const tmp = `${file}.${process.pid}.tmp`;
+    const tmp = `${file}.${process.pid}.${++writeSeq}.tmp`;
     try {
       await fs.promises.writeFile(tmp, body, 'utf8');
       await fs.promises.rename(tmp, file);

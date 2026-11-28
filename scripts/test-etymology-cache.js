@@ -23,41 +23,72 @@ configureCore({
   sha256Hex: () => 'fixture',
   lookupCache: { get: (key) => saved.get(key), set: (key, value, savedAt) => saved.set(key, { value, savedAt }) },
 });
-let calls = 0;
+let dictCalls = 0;
+let etymCalls = 0;
 function service() {
   const result = new DictionaryService();
-  // Stub provider work; exercise the real lookup, memory cache and persistent cache.
-  result.lookupWithCandidates = async (query, _target, _lang, _sources, _holder, opts) => {
-    calls++;
+  result.getFreeDictionaryData = async (word) => {
+    dictCalls++;
     return {
-      word: query.trimmed,
-      definitions: [{ partOfSpeech: 'noun', meaning: 'A cache fixture.', source: 'Wiktionary' }],
-      translations: [{ text: '缓存测试', language: 'zh' }], examples: [], sources: ['Wiktionary'],
-      etymology: opts.skipEtymology ? undefined : '[童理民 · 中文]\nA complete attributed etymology.',
-      metadata: { sourceStatus: { wiktionary: 'ok' }, expectedSources: ['wiktionary'] },
+      definitions: [{ partOfSpeech: 'noun', meaning: `A cache fixture for ${word}.`, source: 'Free Dictionary API' }],
+      pronunciations: [
+        { ipa: '/fɪks/', accent: 'us', source: 'Free Dictionary API' },
+        { ipa: '/fɪks/', accent: 'uk', source: 'Free Dictionary API' },
+      ],
     };
   };
+  result.getWiktionaryData = async () => ({ definitions: [] });
+  result.getDatamuseData = async () => ({ definitions: [], synonyms: [] });
+  result.getBestTranslation = async () => ({ text: '缓存测试', language: 'zh', source: 'Fixture' });
+  result.fetchEtymologyFromWikitext = async () => {
+    etymCalls++;
+    return { text: 'From Latin root.' };
+  };
+  result.fetchEtymologyFromEtymonline = async () => ({ text: '19c. fixture etymology.' });
+  result.fetchEtymologyFromYoudao = async () => '[童理民 · 中文]\nA complete attributed etymology.';
   return result;
 }
 async function lookup(instance, word, skipEtymology) {
-  return instance.lookup(word, 'zh', undefined, { skipEtymology, sourceLanguage: 'en' });
+  let final;
+  const first = await instance.lookup(word, 'zh', ['Free Dictionary API', 'Wiktionary', 'Datamuse'], {
+    skipEtymology,
+    sourceLanguage: 'en',
+    onUpdate: (u) => { final = u; },
+  });
+  if (!skipEtymology && first?.metadata?.pendingEtymology) {
+    for (let i = 0; i < 40 && (!final || final.metadata?.pendingEtymology); i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    return final || first;
+  }
+  return first;
 }
 (async () => {
   const first = service();
   assert.equal((await lookup(first, 'etymology', true)).etymology, undefined);
-  assert.ok((await lookup(first, 'etymology', false)).etymology, 'memory skip result must not answer a full lookup');
-  assert.equal(calls, 2);
-  await lookup(first, 'etymology', false);
-  assert.equal(calls, 2, 'repeat full lookup should still use its own cache');
+  assert.equal(dictCalls, 1);
+  assert.equal(etymCalls, 0);
+  assert.ok((await lookup(first, 'etymology', false)).etymology, 'etymology runs without re-fetching cached dictionaries');
+  assert.equal(dictCalls, 1, 'cached dictionaries must not be re-fetched after a skipEtymology lookup');
+  assert.equal(etymCalls, 1);
+  const cachedFull = await lookup(first, 'etymology', false);
+  assert.ok(cachedFull.etymology);
+  assert.equal(dictCalls, 1);
+  assert.equal(etymCalls, 1, 'repeat full lookup uses per-source bucket cache');
   await lookup(first, 'origin', true);
+  assert.equal(dictCalls, 2);
+  assert.equal(etymCalls, 1);
   const restarted = service();
-  assert.ok((await lookup(restarted, 'origin', false)).etymology, 'persisted skip result must not answer a full lookup');
-  assert.equal(calls, 4);
+  assert.ok((await lookup(restarted, 'origin', false)).etymology, 'persisted dict stays cached while missing etymology fetches');
+  assert.equal(dictCalls, 2, 'persisted dict skipped re-fetch on restart');
+  assert.equal(etymCalls, 2, 'unfetched etymology ran on full lookup after skip');
   assert.ok((await lookup(restarted, 'etymology', false)).etymology);
-  assert.equal(calls, 4, 'full cache survives a service restart');
+  assert.equal(dictCalls, 2);
+  assert.equal(etymCalls, 2, 'full source bucket survives a service restart');
   assert.equal((await lookup(restarted, 'etymology', true)).etymology, undefined);
-  assert.equal(calls, 4, 'skip cache also survives independently');
-  console.log('Etymology cache passed: skip/full memory and persistent lookups remain separate.');
+  assert.equal(dictCalls, 2);
+  assert.equal(etymCalls, 2, 'skipEtymology stays omitted without network calls');
+  console.log('Etymology cache passed: per-source buckets share dictionary hits and fetch etymology on demand.');
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {
   for (const timer of timers) clearTimeout(timer);
 });
