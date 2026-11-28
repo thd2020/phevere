@@ -338,6 +338,32 @@ configureCore({ ...coreConfig, lookupCache: { get: () => null, set: () => {} } }
   const blinked = await latePromise;
   assert.equal(blinked.word, 'blink', 'late Wiktionary form-of update redirects cleanly');
 
+  // Built-in offline Easter egg for "phevere" regardless of letter case.
+  configureCore({
+    ...coreConfig,
+    http: {
+      requestJson: async () => { throw new Error('Easter egg must stay offline'); },
+      requestText: async () => { throw new Error('Easter egg must stay offline'); },
+      requestBytes: async () => { throw new Error('Easter egg must stay offline'); },
+    },
+  });
+  for (const variant of ['phevere', 'Phevere', 'PHEVERE']) {
+    const eggZh = await new DictionaryService().lookup(variant, 'zh');
+    assert.equal(eggZh.word, 'Phevere');
+    assert.equal(eggZh.metadata.easterEgg, true);
+    assert.equal(eggZh.metadata.pendingEtymology, false);
+    assert.equal(eggZh.metadata.pendingTranslation, false);
+    assert.equal(eggZh.metadata.pendingPronunciation, false);
+    assert.ok(eggZh.definitions.length >= 2 && eggZh.definitions.every((d) => d.source === 'Phevere'));
+    assert.ok(eggZh.etymology && /fever/i.test(eggZh.etymology));
+    assert.ok(eggZh.pronunciations && eggZh.pronunciations.length === 2);
+    assert.ok(eggZh.translations.length === 1 && /词热/.test(eggZh.translations[0].text));
+  }
+  const eggEn = await new DictionaryService().lookup('phevere', 'en');
+  assert.equal(eggEn.word, 'Phevere');
+  assert.equal(eggEn.language, 'en');
+  assert.equal(eggEn.translations.length, 0);
+
   console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it; "i.e." opens in English and in Italian on request; derived forms redirect cleanly.');
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);

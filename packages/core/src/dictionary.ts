@@ -810,6 +810,10 @@ export class DictionaryService extends BaseService {
       throw new Error('@phevere/core: configureCore() must run before dictionary lookup');
     }
 
+    if (foldLookupKey(query.trimmed) === 'phevere') {
+      return this.lookupPhevereEasterEgg(query.trimmed, targetLanguage);
+    }
+
     try {
       const hintedSource = (opts?.sourceLanguage || '').toLowerCase().split('-')[0];
       const detectedLanguage =
@@ -821,6 +825,56 @@ export class DictionaryService extends BaseService {
       console.error('❌ Dictionary lookup error:', error);
       this.handleError(error);
     }
+  }
+
+  private lookupPhevereEasterEgg(text: string, targetLanguage: string): DictionaryResult {
+    const resolvedTarget = this.resolveTargetLanguage('en', targetLanguage);
+    const baseTarget = resolvedTarget.toLowerCase().split('-')[0];
+    const pronunciations: Pronunciation[] = [
+      { ipa: '/ˈfiːvər/', accent: 'us', source: 'Phevere' },
+      { ipa: '/ˈfiːvə/', accent: 'uk', source: 'Phevere' },
+    ];
+    return {
+      word: 'Phevere',
+      pronunciation: 'US /ˈfiːvər/ · UK /ˈfiːvə/',
+      pronunciations,
+      definitions: [
+        {
+          partOfSpeech: 'noun',
+          meaning: 'The dictionary app currently looking itself up for you.',
+          examples: ['You hovered a word on a stubborn image and let Phevere figure out the pixels.'],
+          source: 'Phevere',
+        },
+        {
+          partOfSpeech: 'noun',
+          meaning: 'A mild, incurable fever for chasing unfamiliar words and their etymologies across every corner of the screen.',
+          examples: ['One quick lookup turned into a midnight case of phevere.'],
+          source: 'Phevere',
+        },
+      ],
+      translations: baseTarget === 'zh' ? [{ language: 'zh', text: '词热（你正在用的这本词典）', source: 'Phevere' }] : [],
+      examples: [
+        'You hovered a word on a stubborn image and let Phevere figure out the pixels.',
+        'One quick lookup turned into a midnight case of phevere.',
+      ],
+      etymology:
+        'Coined from English fever with a scholarly ph- dressing — half lexicon, half obsession with knowing where every word came from.',
+      language: resolvedTarget,
+      detectedLanguage: 'en',
+      sources: ['Phevere'],
+      metadata: {
+        isSentence: false,
+        sourceLanguage: 'en',
+        targetLanguage: resolvedTarget,
+        originalTargetLanguage: targetLanguage,
+        queriedAs: text,
+        originalSelection: text,
+        pendingEtymology: false,
+        pendingTranslation: false,
+        pendingPronunciation: false,
+        easterEgg: true,
+      },
+    };
   }
 
   /**
