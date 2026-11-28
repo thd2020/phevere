@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.5] - 2026-11-29
+
+### Added
+
+- Built-in `"phevere"` Easter egg entry (2026-11-29): looking up `"phevere"` in any letter case now answers immediately offline with a playful self-referential definition, pronunciation, and etymology. Desktop and phone alike.
+
+### Changed
+
+- Unified per-source lookup cache without host-level backoff (2026-11-29): each dictionary, translation, and etymology source now stores only fetched answers and confirmed misses in one per-word cache bucket instead of caching partial whole-word results or keeping host cooldown timers. A source that fails or times out stays uncached and retries immediately on the next lookup while already-fetched sources load from cache. Desktop and phone alike.
+
+### Fixed
+
+- Automatic fallback when Electron's network service crashes (2026-11-29): desktop lookups and updates now fall back to Node HTTP whenever Chromium's `net.fetch` fails or Electron's NetworkService child process exits (for example after an aborted Windows sign-out). Desktop only.
+- Hover OCR accuracy and `Alt+C` target switching (2026-11-29): hover OCR no longer snaps to a distant text box when the cursor rests over empty space, and re-runs OCR at 2× magnification when 1× finds no line or tiny image text (`<= 13` DIP). In shortcut mode, pressing `Alt+C` now re-reads under the pointer once you move more than 6 DIP from the previous hover target or away from an OCR/clipboard lookup, and clicking outside a pop-up clears any lingering selection hold before the click poll can miss it. Desktop only.
+
 ## [4.3.4] - 2026-11-27
 
 ### Changed
@@ -754,7 +769,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.4...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.5...HEAD
+[4.3.5]: https://github.com/thd2020/phevere/compare/v4.3.4...v4.3.5
 [4.3.4]: https://github.com/thd2020/phevere/compare/v4.3.3...v4.3.4
 [4.3.3]: https://github.com/thd2020/phevere/compare/v4.3.2...v4.3.3
 [4.3.2]: https://github.com/thd2020/phevere/compare/v4.3.1...v4.3.2
