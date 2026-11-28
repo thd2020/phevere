@@ -300,6 +300,7 @@ function focusWentToNewerPopup(win: BrowserWindow, focused: BrowserWindow | null
 function closePopupForOutsideClick(win: BrowserWindow): void {
   win.close();
   stopOutsideClickWatch();
+  hoverLookup?.clearSelectionHold?.();
   // Clear the press that closed the front popup before watching for the next one.
   primaryMousePressedSinceLastPoll();
   let wasDown = true;
@@ -542,8 +543,10 @@ function onTriggerShortcutAfterSelection(): void {
     const at = eventCoordSpace(ev) === 'physical' ? physicalToDip(ev.x, ev.y) : { x: ev.x, y: ev.y };
     const left = !hover.pointerNear(at.x, at.y);
     if (ev.origin === 'hover') {
-      // Resting on a word longer than the selection window still means that word.
-      readUnderPointer = left || now - ev.timestamp > TRIGGER_AFTER_SELECTION_MAX_MS;
+      // Resting on a word longer than the selection window still means that word,
+      // but moving > 6 DIP across small nearby words must re-read under the pointer.
+      const leftHover = !hover.pointerNear(at.x, at.y, 6);
+      readUnderPointer = leftHover || now - ev.timestamp > TRIGGER_AFTER_SELECTION_MAX_MS;
     } else if (ev.origin === 'selection' || ev.origin === 'manual') {
       readUnderPointer = left && (!hover.isHeldBySelection() || now - ev.timestamp > 3_000);
       if (readUnderPointer) {
@@ -551,9 +554,10 @@ function onTriggerShortcutAfterSelection(): void {
       } else {
         hover.refreshSelectionHold?.();
       }
-    } else if (ev.origin === 'search') {
-      // A word opened from a list (createDictionaryWindow) was never under the pointer.
-      readUnderPointer = true;
+    } else {
+      // A word opened from a list ('search') was never under the pointer; other origins
+      // ('ocr', 'clipboard', 'media') only stay valid while the pointer stays nearby.
+      readUnderPointer = ev.origin === 'search' || left;
     }
   }
   if (readUnderPointer && hover) {

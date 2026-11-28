@@ -202,10 +202,9 @@ export class HoverLookupService {
   }
 
   /** True while the pointer is still on the spot (DIP) a hover word was read at. */
-  pointerNear(x: number, y: number): boolean {
+  pointerNear(x: number, y: number, tolerancePx = this.opts.staleTolerancePx): boolean {
     const pos = this.cursorPoint();
-    const t = this.opts.staleTolerancePx;
-    return Math.abs(pos.x - x) <= t && Math.abs(pos.y - y) <= t;
+    return Math.abs(pos.x - x) <= tolerancePx && Math.abs(pos.y - y) <= tolerancePx;
   }
 
   /**
@@ -435,19 +434,52 @@ async function ocrWordUnderCursor(x: number, y: number, halfW: number): Promise<
   const halfWidth = Math.max(80, halfW);
   const halfHeight = Math.max(48, Math.round(halfWidth / 5));
 
-  const run = async (hw: number, hh: number) => {
+  const run = async (hw: number, hh: number, upscale = 1) => {
     const capture = await captureAroundPoint(x, y, hw, hh);
     if (!capture) return null;
-    const ocr = await ocrEngine.recognize(capture.png);
+    const baseSize = capture.image.getSize();
+    const imgW = upscale > 1 ? Math.round(baseSize.width * upscale) : baseSize.width;
+    const imgH = upscale > 1 ? Math.round(baseSize.height * upscale) : baseSize.height;
+    const png =
+      upscale > 1 ? capture.image.resize({ width: imgW, height: imgH, quality: 'good' }).toPNG() : capture.png;
+    const ocr = await ocrEngine.recognize(png);
     const { px, py, scale } = cursorInCapture(capture, x, y);
-    const size = capture.image.getSize();
-    return { ocr, px, py, scale, imgW: size.width, imgH: size.height };
+    return { ocr, px: px * upscale, py: py * upscale, scale: scale * upscale, imgW, imgH, capture, upscale };
   };
 
-  const locate = await run(halfWidth, halfHeight);
+  let locate = await run(halfWidth, halfHeight, 1);
   if (!locate) return '';
 
-  const hit = lineNearPoint(locate.ocr, locate.px, locate.py);
+  let hit = lineNearPoint(locate.ocr, locate.px, locate.py, { strict: true });
+  const rawEmDip = hit?.bounds ? hit.bounds.height / (locate.scale || 1) : 0;
+  // Re-run OCR at 2x on the already-captured crop when small text (~<=13 DIP) missed detection
+  // or came back tiny; keeps hover from returning nothing on fine text in images.
+  if (!hit || rawEmDip <= 13) {
+    const size = locate.capture.image.getSize();
+    const upW = Math.round(size.width * 2);
+    const upH = Math.round(size.height * 2);
+    const upPng = locate.capture.image.resize({ width: upW, height: upH, quality: 'good' }).toPNG();
+    const ocr2 = await ocrEngine.recognize(upPng);
+    const px2 = locate.px * 2;
+    const py2 = locate.py * 2;
+    const hit2 = lineNearPoint(ocr2, px2, py2, { strict: true });
+    if (hit2) {
+      locate = {
+        ocr: ocr2,
+        px: px2,
+        py: py2,
+        scale: locate.scale * 2,
+        imgW: upW,
+        imgH: upH,
+        capture: locate.capture,
+        upscale: 2,
+      };
+      hit = hit2;
+    } else if (!hit) {
+      return '';
+    }
+  }
+
   const clipped = !!(hit?.bounds && boxTouchesImageEdge(hit.bounds, locate.imgW, locate.imgH));
   let emDip = hit?.bounds ? Math.max(10, hit.bounds.height / (locate.scale || 1)) : 16;
   if (clipped) emDip = Math.max(emDip, emDip * 1.8, 28);
@@ -462,8 +494,8 @@ async function ocrWordUnderCursor(x: number, y: number, halfW: number): Promise<
     Math.max(halfHeight, Math.round((emDip * 5) / 4), clipped ? 56 : 0),
   );
   const sameCrop = Math.abs(wordHalfW - halfWidth) < 8 && Math.abs(wordHalfH - halfHeight) < 8;
-  const pass = sameCrop ? locate : (await run(wordHalfW, wordHalfH)) || locate;
-  return textNearPoint(pass.ocr, pass.px, pass.py).trim();
+  const pass = sameCrop ? locate : (await run(wordHalfW, wordHalfH, locate.upscale)) || locate;
+  return textNearPoint(pass.ocr, pass.px, pass.py, { strict: true }).trim();
 }
 
 /** True when the OCR overlay has focus, or the pointer is over the focused Phevere window. */

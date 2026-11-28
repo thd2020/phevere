@@ -1308,21 +1308,39 @@ export function listOcrProfiles() {
  * Prefer the line / token whose box contains (relX, relY); else nearest box;
  * else full joined text. Coordinates are in image-pixel space.
  */
-export function lineNearPoint(result: OcrResult, relX: number, relY: number): OcrLine | undefined {
+export function lineNearPoint(
+  result: OcrResult,
+  relX: number,
+  relY: number,
+  opts?: { strict?: boolean },
+): OcrLine | undefined {
   const lined = result.lines.filter((l) => l.text && l.bounds && l.bounds.width > 0);
   if (lined.length === 0) return undefined;
 
-  const containing = lined.find((l) => {
+  const containing = lined.filter((l) => {
     const b = l.bounds!;
-    const pad = Math.max(4, b.height * 0.35);
+    const padX = Math.max(4, Math.min(12, b.height * 0.4));
+    const padY = Math.max(2, Math.min(6, b.height * 0.25));
     return (
-      relX >= b.x - pad &&
-      relX <= b.x + b.width + pad &&
-      relY >= b.y - pad &&
-      relY <= b.y + b.height + pad
+      relX >= b.x - padX &&
+      relX <= b.x + b.width + padX &&
+      relY >= b.y - padY &&
+      relY <= b.y + b.height + padY
     );
   });
-  if (containing) return containing;
+  if (containing.length > 0) {
+    return containing.reduce((best, line) => {
+      const b = line.bounds!;
+      const bb = best.bounds!;
+      const dy = Math.abs(relY - (b.y + b.height / 2));
+      const bdy = Math.abs(relY - (bb.y + bb.height / 2));
+      if (dy !== bdy) return dy < bdy ? line : best;
+      const d = (relX - (b.x + b.width / 2)) ** 2 + (relY - (b.y + b.height / 2)) ** 2;
+      const bd = (relX - (bb.x + bb.width / 2)) ** 2 + (relY - (bb.y + bb.height / 2)) ** 2;
+      return d < bd ? line : best;
+    });
+  }
+  if (opts?.strict) return undefined;
 
   let best = lined[0];
   let bestDist = Infinity;
@@ -1339,12 +1357,18 @@ export function lineNearPoint(result: OcrResult, relX: number, relY: number): Oc
   return best;
 }
 
-export function textNearPoint(result: OcrResult, relX: number, relY: number): string {
-  const hit = lineNearPoint(result, relX, relY);
+export function textNearPoint(
+  result: OcrResult,
+  relX: number,
+  relY: number,
+  opts?: { strict?: boolean },
+): string {
+  const hit = lineNearPoint(result, relX, relY, opts);
   if (!hit?.bounds) {
+    if (opts?.strict) return '';
     return pickTokenAt(glueSpacedLetters(result.text || ''), { x: 0, y: 0, width: 1, height: 1 }, 0.5);
   }
-  return pickTokenAt(hit.text, hit.bounds, relX);
+  return pickTokenAt(hit.text, hit.bounds, relX, opts);
 }
 
 const CJK_TOKEN = /[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/;
@@ -1382,9 +1406,18 @@ function charIndexAtRatio(chars: string[], ratio: number): number {
 }
 
 /** Split a line into words / CJK chars and pick the token under the x offset. */
-function pickTokenAt(line: string, bounds: NonNullable<OcrLine['bounds']>, relX: number): string {
+function pickTokenAt(
+  line: string,
+  bounds: NonNullable<OcrLine['bounds']>,
+  relX: number,
+  opts?: { strict?: boolean },
+): string {
   const text = glueSpacedLetters(line.replace(/\s+/g, ' ').trim());
   if (!text) return '';
+  if (opts?.strict && bounds.width > 0) {
+    const padX = Math.max(4, Math.min(12, bounds.height * 0.4));
+    if (relX < bounds.x - padX || relX > bounds.x + bounds.width + padX) return '';
+  }
   const chars = [...text];
   const ratio = bounds.width > 0 ? Math.min(1, Math.max(0, (relX - bounds.x) / bounds.width)) : 0.5;
   let idx = charIndexAtRatio(chars, ratio);

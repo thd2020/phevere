@@ -49,4 +49,51 @@ assert.strictEqual(
   ]).text,
   'centrifu',
 );
+
+// Hover OCR strict point-matching (no snapping to distant boxes or adjacent stacked lines).
+const esbuild = require('esbuild');
+const engineBundle = esbuild.buildSync({
+  entryPoints: [path.join(__dirname, '..', 'src', 'services', 'ocr-engine.ts')],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  write: false,
+  external: ['electron', '@phevere/core/*', '@gutenye/ocr-node', 'onnxruntime-node', 'sharp'],
+}).outputFiles[0].text;
+const engMod = { exports: {} };
+const stubs = {
+  electron: {
+    app: { isPackaged: false, getPath: () => '.', getAppPath: () => '.' },
+    nativeImage: { createFromBuffer: () => ({}) },
+    net: {},
+  },
+  '@phevere/core/i18n/runtime': { t: (k) => k },
+  '@phevere/core/ocr-layout': { buildOcrPage: () => ({}), ocrPageText: () => '', pageLines: () => [] },
+};
+vm.runInNewContext(engineBundle, {
+  module: engMod,
+  exports: engMod.exports,
+  console,
+  process,
+  Buffer,
+  URL,
+  __dirname: path.join(__dirname, '..', 'src', 'services'),
+  require: (name) => stubs[name] || require(name),
+});
+const { lineNearPoint, textNearPoint } = engMod.exports;
+
+const stackedResult = {
+  text: 'Artwork by majamari\nMF Books Mushoku Tensei: Jobless Reincarnation',
+  lines: [
+    { text: 'Artwork by majamari', bounds: { x: 100, y: 10, width: 120, height: 12 } },
+    { text: 'MF Books Mushoku Tensei: Jobless Reincarnation', bounds: { x: 80, y: 23, width: 220, height: 12 } },
+  ],
+};
+assert.strictEqual(lineNearPoint(stackedResult, 20, 16, { strict: true }), undefined, 'strict mode returns undefined far left of boxes');
+assert.strictEqual(textNearPoint(stackedResult, 20, 16, { strict: true }), '', 'strict mode returns empty string outside boxes');
+assert.strictEqual(textNearPoint(stackedResult, 160, 60, { strict: true }), '', 'strict mode returns empty string vertically away from lines');
+assert.strictEqual(lineNearPoint(stackedResult, 150, 16, { strict: true }).text, 'Artwork by majamari', 'picks top stacked row');
+assert.strictEqual(lineNearPoint(stackedResult, 150, 29, { strict: true }).text, 'MF Books Mushoku Tensei: Jobless Reincarnation', 'picks bottom stacked row');
+assert.strictEqual(textNearPoint(stackedResult, 215, 29, { strict: true }), 'Jobless', 'picks word inside second row');
+
 console.log('ocr-text ok');

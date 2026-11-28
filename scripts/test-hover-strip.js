@@ -646,6 +646,50 @@ function assertStripAt(win, word, message) {
   await hover.tick();
   await flush();
   assert.equal(strips()[0]?.text, betaWord.text, 'shortcut after 3s away reads the word under the pointer');
+  for (const w of strips()) { w.close(); w.closed(); }
+
+  // Moving > 6 DIP across adjacent small words (even within 24 DIP) re-reads at the pointer.
+  const leftSmall = { text: 'joble', x: 1000, y: 200, width: 16, height: 12 };
+  const rightSmall = { text: 'tensei', x: 1018, y: 200, width: 22, height: 12 };
+  words.push(leftSmall, rightSmall);
+  now += 2000;
+  mouseDown = false;
+  context.lastSelectionEvent = {
+    text: leftSmall.text,
+    x: center(leftSmall).x,
+    y: center(leftSmall).y,
+    timestamp: now,
+    origin: 'hover',
+    coordSpace: 'dip',
+  };
+  cursor = center(rightSmall);
+  context.onTriggerShortcutAfterSelection();
+  await hover.tick();
+  await flush();
+  assert.equal(strips().length, 1, 'Alt+C opens a strip for the adjacent word');
+  strips()[0].finishLoad();
+  assert.equal(strips()[0].text, rightSmall.text, 'Alt+C moving > 6 DIP between nearby words reads the new word under pointer');
+  for (const w of strips()) { w.close(); w.closed(); }
+  words.pop();
+  words.pop();
+
+  // Moving away from an OCR event in shortcut mode reads under the pointer instead of replaying stale OCR text.
+  now += 2000;
+  context.lastSelectionEvent = {
+    text: 'staleocr',
+    x: 300,
+    y: 600,
+    timestamp: now,
+    origin: 'ocr',
+    coordSpace: 'dip',
+  };
+  cursor = center(betaWord);
+  context.onTriggerShortcutAfterSelection();
+  await hover.tick();
+  await flush();
+  assert.equal(strips().length, 1, 'Alt+C away from an ocr event opens a strip');
+  strips()[0].finishLoad();
+  assert.equal(strips()[0].text, betaWord.text, 'Alt+C away from an ocr event reads the word under pointer');
   context.monitorSettings.mode = 'on';
   for (const w of strips()) { w.close(); w.closed(); }
 
